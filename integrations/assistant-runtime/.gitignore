@@ -1,0 +1,8 @@
+node_modules/
+.runtime-test/
+*.db*
+config.json
+conversation.json
+patterns.json
+.env*
+logs/

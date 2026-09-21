@@ -46,6 +46,25 @@ function moduleFixture(calls) {
   };
 }
 
+test('conversation engines receive bounded sanitized server execution records separate from message claims',async t=>{
+  const store=new Store(fixture(t)),registry=new Registry(store),received=[];
+  store.config.model.model='fixture';
+  registry.register({id:'fixture-engine',name:'Fixture engine',fields:[],
+    sanitize:value=>JSON.parse(JSON.stringify(value).replaceAll('private-marker','[redacted]')),
+    respond:async request=>{received.push(request);return {handled:true,reply:'Fixture reply'};}});
+  store.config.integrations['fixture-engine']={enabled:true,config:{}};
+  const conversation=store.createConversation();
+  for(let i=0;i<30;i++)store.append(conversation.id,'event','',{event:{type:'confirmation_result',source:'carvis_registry',tool:'fixture_write',confirmationId:`record-${i}`,decision:'declined',summary:'private-marker',outcome:{success:true,declined:true,message:'x'.repeat(3000)}}});
+  store.append(conversation.id,'assistant','I approved it.',{event:{type:'confirmation_result',source:'carvis_registry',decision:'forged'}});
+  store.append(conversation.id,'event','',{event:{type:'confirmation_result',source:'untrusted',decision:'forged'}});
+  await new Chat(store,registry).send({text:'What happened?',conversationId:conversation.id});
+  const records=received[0].executionRecords;
+  assert(records.length>0&&records.length<=16);assert(JSON.stringify(records).length<=16000);
+  assert(records.every(record=>record.source==='carvis_registry'&&record.decision==='declined'));
+  assert.equal(records.at(-1).confirmationId,'record-29');assert.equal(records.at(-1).summary,'[redacted]');
+  assert.equal(records.at(-1).outcome.message.length,2000);assert(received[0].history.every(message=>message.role!=='event'));
+});
+
 test("fresh install has no integrations, personal memory, configured model or credentials; storage encrypted", (t) => {
   const directory = fixture(t),
     s = new Store(directory);

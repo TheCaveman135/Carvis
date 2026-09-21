@@ -35,6 +35,22 @@ export default {
 
 Sanitizers run even when an integration has never been configured or has been disabled. In that case they receive `enabled:false` and `config:{}` with no credentials. They must tolerate this and remove any formerly accessible resource identifiers from recalled history. Sanitizers must not make network requests or activate capabilities. Before every model round, Carvis refreshes enabled tools and integration context and sanitizes the full history again.
 
+Optional metadata includes `category`, `dependsOn` (Integration IDs), and
+`workspaceUrl` for a management page. `workspaceDependsOn` controls availability
+of that page without disabling the Integration's independent tools. Required
+dependencies must be enabled explicitly. The registry removes unavailable tools
+and context when an Integration or its dependency is disabled.
+
+Lifecycle hooks are `start(ctx)`, `stop()`, and `configurationChanged()`. The last
+runs after configuration changes, including disable; stop background jobs and
+discard stale connections or permissions there. One enabled conversation engine
+may implement `respond(request,ctx)` to provide the conversation pipeline. Its
+request includes cancellation, conversation context, and an event emitter. The
+bundled Assistant engine runs its services in a private worker and forwards other
+Integrations' tools through the same registry, including confirmations and
+cancellation. Installing an extension therefore adds its abilities to both base
+chat and the optional Assistant engine.
+
 Only enabled integrations expose tools and device routes. `GET /api/integrations/home-assistant/entities` is a deliberately owner-only exception for configuring the device picker before activation. The Even Realities module has a scoped pairing token for its companion; that token cannot configure Carvis or read the owner settings API.
 
 Tool names must be unique, up to 64 letters/digits/underscores/hyphens, starting with a letter. Every tool declares a JSON Schema `parameters` object, using `additionalProperties:false` where appropriate. Validate service-specific rules again in `execute(args,options)`; do not treat model output as authorization.
@@ -45,11 +61,21 @@ A protected tool can supply `confirmation(args,options)` returning a user-readab
 
 Call `registry.invoke(name,args,{source:'device'})` when one integration needs another. Do not bypass that path with direct adapter writes. `registry.describe(name)` returns metadata for an enabled tool; polling may invoke a tool only when it explicitly declares `readOnly:true`. This is a convention for trusted integration developers, not a sandbox for untrusted code.
 
-Use authenticated foreground actions. Background actuation is not supported by the initial core. Honor dry-run settings, per-device selection, revocation, and guards. Never retry an uncertain action automatically.
+Use authenticated foreground actions. The generic registry rejects background
+actuation. The optional Protocols and Proactivity Integrations use their existing
+guarded automation gateway for explicitly configured behavior; this does not give
+new extension tools permission to act unattended. Honor dry-run settings,
+per-device selection, revocation, and guards. Never retry an uncertain action
+automatically.
 
 ## Setup fields and secrets
 
-Supported field types: `text`, `url`, `password`, `textarea`, `boolean`, `select`, `entities`. Select options are `{value,label}` objects. Password values remain encrypted on the server, and the UI gets `has<FieldName>` only. Leaving a password input blank retains its existing value. Configuration must contain no developer-specific defaults or hidden endpoints.
+Supported field types: `text`, `url`, `password`, `textarea`, `boolean`, `number`,
+`json`, `select`, `entities`. Set `group`, `description`, and `default` to make
+settings understandable and organized. Select options are `{value,label}`
+objects. Password values remain encrypted on the server, and the UI gets
+`has<FieldName>` only. Leaving a password input blank retains its existing value.
+Configuration must contain no developer-specific defaults or hidden endpoints.
 
 ## Testing
 

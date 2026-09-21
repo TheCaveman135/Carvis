@@ -1,6 +1,5 @@
-node_modules/
 dist/
-*.ehpk
+dist-basic/
 app.local.json
-qa.local.html
-.env*
+app.basic.local.json
+*.ehpk

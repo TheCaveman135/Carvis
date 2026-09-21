@@ -1,15 +1,18 @@
 {
   "name": "carvis-even-realities",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
-    "pack": "npm run build && node scripts/pack.mjs"
+    "pack": "npm run build && node scripts/pack.mjs",
+    "build:basic": "tsc --noEmit && vite build --mode basic",
+    "pack:basic": "npm run build:basic && node scripts/pack.mjs --basic"
   },
   "dependencies": {
-    "@evenrealities/even_hub_sdk": "0.0.15"
+    "@evenrealities/even_hub_sdk": "0.0.15",
+    "@evenrealities/pretext": "^0.1.4"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

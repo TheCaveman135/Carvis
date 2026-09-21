@@ -1,12 +1,13 @@
 # Even Realities integration
 
-The optional Even Realities integration connects a G2 glasses companion to your own Carvis server. The chatbot works without it; it is disabled until you configure and enable it in **Integrations**.
+The optional Even Realities integration connects G2 glasses to your own Carvis installation. The full companion preserves the phone audio, widgets, captions, and background recovery of Carvis's glasses interface. All connection fields start empty; enabling the integration does not start a microphone.
 
-## Connect your own installation
+## Connect the full companion
 
-1. Give your Carvis server an HTTPS address reachable from your phone. Keep access authenticated. Do not publish your data directory or credentials.
-2. In **Integrations → Even Realities**, enter that address and generate a **Device pairing token**. Enable the integration.
-3. Build the companion for your server origin. Even Hub requires the network origin in its package permission whitelist:
+1. Give your Carvis installation an HTTPS address reachable from your phone.
+2. Enable and configure **Assistant engine** and **Even Realities** in Carvis's Integrations. Enter your server address in Even Realities and generate a **Device pairing token**.
+3. For microphone input, also configure and enable **Voice conversation**. Its speech recognition settings support the providers offered by that integration, including Deepgram. For spoken replies, configure and enable **Speech output**, then choose your output on the companion's phone screen. Home speaker playback also needs Home Assistant and a selected speaker.
+4. Build the companion for your server origin. Even Hub requires that origin in the package network whitelist:
 
    ```sh
    cd integrations/even-realities
@@ -14,26 +15,26 @@ The optional Even Realities integration connects a G2 glasses companion to your 
    CARVIS_PUBLIC_URL=https://your-carvis.example npm run pack
    ```
 
-4. Upload the generated `carvis.ehpk` to your Even Hub developer dashboard and open it in the Even app. The source manifest's `https://carvis.example` address is a placeholder, not a hosted Carvis service.
-5. Enter your **Carvis URL** and **Device pairing token** in the companion's phone screen and tap **Connect**. Both inputs start empty. Connection details are saved through Even's device storage; the token never goes in the URL.
+5. Upload `carvis.ehpk` to your Even Hub developer dashboard. Open the app, enter your **Carvis address** and **Token** under **Connection settings**, and tap **Save and reconnect**. The placeholder `https://carvis.example` in the source manifest is not a hosted service.
+6. Tap **Unmute** to begin listening. Your mute preference is remembered. Tap again to turn off capture and discard unfinished audio.
 
-The companion uses SDK 0.0.15 and requires Even app 2.2.10 or later. The generated `app.local.json`, packages, and build output are ignored by Git. Your address is stored in that local package whitelist, so build your own package rather than distributing somebody else's configured package. No credentials are bundled during packaging.
+The package uses SDK 0.0.15 and requires Even app 2.2.10 or later. Generated manifests, build output, and packages are ignored by Git. Packages contain your server origin in the whitelist, but no pairing token. The pairing token is saved in Even's device storage and never placed in a URL. It is limited to companion routes and cannot administer Carvis. Regenerate it in Integrations if it is lost, then reconnect each device.
 
-The device token is restricted to the integration's device endpoints. It can send messages, see the current HUD, and invoke enabled integration tools with their normal permission checks. It cannot administer Carvis settings. Treat it as private and regenerate it if lost; reconnect each paired device afterward.
+The source and full companion use a separate storage namespace from older configured installations. HTTP is accepted only for loopback development; use HTTPS from a physical phone.
 
-## Chat and optional voice
+## Voice, replies, and phone audio
 
-Type messages on the phone; Carvis's replies appear there and at the bottom of the glasses. Long replies are shortened on the HUD, with the full reply kept on the phone. Reply captions clear after 30 seconds. With no widgets or caption, the glasses are blank.
+The full companion sends 16 kHz mono PCM to the server's voice pipeline. Local volume detection retains the beginning of speech, stops after about 900 ms of silence, and limits each utterance to 15 seconds. Until an address and pairing token are saved, it makes no server requests and leaves the microphone off. Recognition quality still depends on the microphone, environment, and configured speech provider.
 
-For voice, enable **Voice transcription** in the integration settings and enter a speech provider API base URL, API key, and supported transcription model. The provider must implement an OpenAI-compatible `POST /audio/transcriptions` endpoint. The API key stays encrypted on the Carvis server. An optional language code can improve recognition.
+Replies appear in readable pages at the bottom of the glasses. A page remains long enough to read after the glasses accept it, then the next page appears. Full replies and history remain on the phone; swiping on the glasses does not open history.
 
-Tap **Start microphone** on the phone, or tap the glasses while no widget is selected. Tap again to mute. The mic is off on startup. Local volume-based speech detection keeps quiet audio on the device and sends an utterance after about one second of silence. A request contains at most 30 seconds of 16 kHz mono audio. Muting discards an unfinished utterance. Audio is not saved by this integration; recognized text becomes part of the conversation. Your selected provider may apply its own data retention policy.
+Choose **This iPhone** to play replies with the phone's speech voice, then tap **Enable phone audio** to unlock playback. The companion prefers an available British English voice. Keep the phone screen active for this output and re-enable it if the host stops playback. Home speaker output runs through the server independently. G2 glasses do not provide a speaker.
 
-The current companion supports text replies and voice input. It does not add speech playback; G2 has no built-in audio output. Notifications and the native menu do not tear down the microphone or the app. Closing the app stops microphone capture. Physical microphone sensitivity and Bluetooth behavior still need validation on your glasses.
+Temporary notifications and native menus keep the session running. Foreground recovery rebuilds invalid display containers; closing the app stops capture. These paths are covered by logic tests, but simulator checks cannot prove Bluetooth, iOS speech, or microphone reliability on hardware.
 
-## Interactive widgets
+## HUD and interactive widgets
 
-Ask naturally: “Show a brightness slider for the desk light,” or “Give me buttons for the living room.” Enable and configure the relevant device integration first. The model only receives tools from enabled integrations.
+Ask naturally: “Show a brightness slider for the desk light,” or “Give me buttons for the living room.” Configure the relevant integration and select the devices Carvis may see or control first. With the Assistant engine enabled, Carvis's HUD tools create the full companion's widgets and bindings.
 
 The four slots are:
 
@@ -42,9 +43,24 @@ The four slots are:
 2 | 4
 ```
 
-Swiping selects occupied slots numerically. A border marks the selected widget. Buttons execute on tap. For sliders and dropdowns, tap to edit, swipe to preview, and tap again to apply. Double-tap cancels an unfinished edit and removes the outline; widgets stay visible. The native contextual menu includes **Clear screen**, which removes widgets and captions. Confirmation prompts stay available on the phone until answered or expired.
+Swiping visits occupied slots numerically. A border marks the selected widget. Tap a button to execute its action. Tap a slider or dropdown to edit, swipe to preview, and tap again to apply. Double-tap cancels the edit and removes the selection outline; the widgets stay visible. The app menu includes **Clear screen** to remove widgets and captions. With no selection, a tap toggles mute. Pending guarded requests use the existing confirmation flow.
 
-Each widget has separate display and action properties. A display may be blank, static, or bound to an explicitly read-only integration tool. Bindings refresh about every five seconds while connected. Disabling or restricting the source integration makes its state unavailable. A button invokes a registered tool with its stored arguments. A slider replaces one numeric argument. Each dropdown choice has its own stored action. The phone cannot submit a replacement tool name through a gesture request.
+Widgets have separate display and interaction properties. They can show live device values, camera images, or text. Actions continue to use the selected entities and configured guards. Disabling an integration removes its capabilities from Carvis.
+
+An empty HUD has no status text. The optional tiny bottom-left dot is controlled by **Microphone indicator** on the phone: show when muted, show when unmuted, or off.
+
+## Basic companion without Assistant engine
+
+A smaller companion remains available for installations using only the core chatbot and native integrations. It uses `/api/integrations/even-realities/*` instead of the full assistant's voice/HUD routes. Build it separately:
+
+```sh
+cd integrations/even-realities
+CARVIS_PUBLIC_URL=https://your-carvis.example npm run pack:basic
+```
+
+Upload `carvis-basic.ehpk`; its app identifier is separate from the full companion. It supports typed chat, optional OpenAI-compatible transcription configured directly in Even Realities, basic interactive widgets, bottom reply captions, and a mute indicator. It does not include phone speech playback, camera images, or the full assistant's voice pipeline. Basic microphone capture starts off each launch.
+
+The following payload applies to the Basic companion's `even_realities_set_widget` tool, not to the full assistant's HUD tools.
 
 Here is the `even_realities_set_widget` payload for a Home Assistant light slider. Replace `light.desk` with an entity you selected in that integration:
 
@@ -84,12 +100,11 @@ Actions bypass the language model once a widget exists. They still use the integ
 ```sh
 npm test
 npm run build --prefix integrations/even-realities
+npm run build:basic --prefix integrations/even-realities
 cd integrations/even-realities
 npm run dev
-# In another terminal, with the optional simulator installed:
+# With the optional simulator installed:
 evenhub-simulator http://localhost:5173 --automation-port 9898
 ```
 
-Server tests cover widget validation, permissions, duplicate requests, live read sources, confirmations, audio boundaries, transcription, gesture order, and local voice segmentation. Build checks verify SDK types. Simulator checks supplement physical testing; they cannot establish Bluetooth reliability or microphone recognition quality.
-
-SDK reference: [contextual menu](https://hub.evenrealities.com/docs/build/contextual-menu).
+The default dev page is the full companion; `/basic.html` opens the Basic companion. Unit checks cover pairing validation and zero requests before pairing, gesture ordering and edit cancellation, overlay lifecycle recovery, microphone segmentation, and native widget permission checks. Both builds check SDK types.

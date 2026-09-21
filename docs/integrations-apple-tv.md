@@ -3,16 +3,20 @@
 This integration connects Carvis to an **existing Apple TV AI Home Assistant add-on**. It is an adapter, not the visual controller itself. The controller add-on must implement the API below and already have its own capture/remote/model configuration. No personal TV configuration is shipped with Carvis.
 
 1. Enable and configure Home Assistant in Carvis.
-2. Add your TV media-player and/or remote entities to the selected HA entities. Control requires the controllable list; status only requires observation.
+2. Select the TV media-player in Home Assistant. Control requires the controllable list; status only requires observation. A remote can be the selected target when no media-player is configured.
 3. Enable Apple TV AI. Enter the actual entity IDs and add-on slug. The slug defaults to `local_apple_tv_ai`.
-4. Optionally enter TV context, such as preferred streaming apps or subtitle preferences.
+4. Under **Context**, optionally enter streaming-app or subtitle preferences. Under **Reply behavior**, choose **Silent successful navigation** and **Short power and playback replies**, then **Save changes**. Both switches default to on.
 5. Test the connection. HA's token must permit Supervisor API access. This requires a Home Assistant installation with Supervisor and the running controller add-on.
 
-All actions go through the controller. Navigation never falls back to direct Home Assistant services. The Home Assistant dry-run setting and per-entity guards still apply. Every action is a direct owner request; guarded targets ask for confirmation. A configured remote is needed for navigation buttons. If you intend normal remote navigation without confirmation, explicitly mark that selected remote `standard` in HA guard overrides.
+All actions go through the controller. Navigation never falls back to direct Home Assistant services. The Home Assistant dry-run setting and per-entity guards still apply. Every action is a direct owner request; guarded targets ask for confirmation. A configured remote ID is needed for navigation transport, but it does not have to be exposed to Carvis when the selected TV media-player supplies permission. The selected target’s guard controls confirmation; choose its guard in **Home Assistant → Configure → Devices & permissions**.
 
 Tools: `tv_start`, `tv_status`, `tv_context`, `tv_cancel`, `tv_button`, and `tv_command`. Starting a visual task is asynchronous. Carvis must check status before claiming it finished. `tv_context` adds guidance to the existing task at its next decision, preserving progress. For example, “Search Netflix instead” is a context update rather than a restart.
 
-Successful navigation requests ask Carvis to stay silent. Power/playback commands ask for one short reply. These are model response preferences, not a dedicated silent navigation path: the general chat loop may still produce a reply. The UI also shows tool execution traces. Completed task history is not a live view of the screen; `completion_verified` is true only when the controller supplies explicit completion evidence.
+With **Assistant engine** enabled, recognized TV navigation uses the fast command path and skips the main model loop. Successful navigation stays silent when its switch is on; power/playback commands get one short acknowledgement when theirs is on. Contextual commands such as “select” need a recent TV conversation to identify their target. Ambiguous requests can still need the model. Failures, dry runs, and required confirmations remain visible.
+
+With only the core chatbot enabled, TV tools still work through the normal model loop. The same switches supply response preferences, but that path can produce model narration. Enable Assistant engine for the dedicated fast path and enforced navigation silence.
+
+Execution details remain available even for silent commands. **Open workspace** provides the integrated TV view when Assistant engine is enabled. Task history alone is not a live screen view; `completion_verified` is true only when the controller supplies explicit completion evidence.
 
 ## Controller API contract
 

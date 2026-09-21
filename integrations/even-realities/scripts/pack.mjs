@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 
 // Even Hub requires the actual server origin in the package network whitelist.
 // This generated manifest is local-only; the public source never contains it.
+const basic = process.argv.includes("--basic");
 const address = process.env.CARVIS_PUBLIC_URL;
 if (!address)
   throw new Error(
@@ -23,7 +24,9 @@ const manifest = JSON.parse(await readFile("app.json", "utf8"));
 manifest.permissions.find(
   (permission) => permission.name === "network",
 ).whitelist = [url.origin];
-await writeFile("app.local.json", `${JSON.stringify(manifest, null, 2)}\n`, {
+if (basic) { manifest.package_id = "app.carvis.basic"; manifest.name = "Carvis Basic"; manifest.entrypoint = "basic.html"; }
+const manifestPath = basic ? "app.basic.local.json" : "app.local.json";
+await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, {
   mode: 0o600,
 });
 const result = spawnSync(
@@ -32,10 +35,10 @@ const result = spawnSync(
     "--no-install",
     "evenhub",
     "pack",
-    "app.local.json",
-    "dist",
+    manifestPath,
+    basic ? "dist-basic" : "dist",
     "-o",
-    "carvis.ehpk",
+    basic ? "carvis-basic.ehpk" : "carvis.ehpk",
   ],
   { stdio: "inherit" },
 );

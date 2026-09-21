@@ -1,6 +1,23 @@
 import { modelRound, toolOutput } from "./provider.js";
 import { text as checkedText } from "./validation.js";
 
+function executionRecords(conversation) {
+  const fields = ['success', 'accepted', 'verified', 'dryRun', 'declined', 'requiresConfirmation', 'error', 'message', 'id', 'status'];
+  const records = conversation.messages
+    .filter(m => m.role === 'event' && m.event?.type === 'confirmation_result' && m.event?.source === 'carvis_registry')
+    .slice(-16).map(m => ({
+      type:'confirmation_result', source:'carvis_registry', recordedAt:m.createdAt,
+      tool:String(m.event.tool || '').slice(0,80), confirmationId:String(m.event.confirmationId || '').slice(0,100),
+      decision:String(m.event.decision || '').slice(0,30), summary:String(m.event.summary || '').slice(0,1000),
+      outcome:Object.fromEntries(fields.flatMap(key => {
+        const value=m.event.outcome?.[key];
+        return ['string','boolean','number'].includes(typeof value) ? [[key,typeof value==='string'?value.slice(0,2000):value]] : [];
+      })),
+    }));
+  while (JSON.stringify(records).length > 16000) records.shift();
+  return records;
+}
+
 export class Chat {
   constructor(store, registry, { round = modelRound } = {}) {
     Object.assign(this, { store, registry, round });
@@ -28,6 +45,23 @@ export class Chat {
     let reply = "";
     try {
       this.store.append(conversation.id, "user", text);
+      const handled = await this.registry.respond({
+        text, source, conversationId: conversation.id, emit, signal,
+        history: conversation.messages.filter(m => ['user', 'assistant'].includes(m.role)).slice(-24),
+        memory: this.store.data.memory,
+        executionRecords: await this.registry.sanitize(executionRecords(conversation), { signal }),
+      });
+      if (handled?.handled) {
+        signal?.throwIfAborted();
+        reply = handled.reply || '';
+        if (reply) emit('delta', { text: reply });
+        const updated = this.store.append(conversation.id, 'assistant', reply, {
+          silent: handled.silent === true, integration: 'conversation-engine',
+          outcome: handled.outcome, tools: handled.actions || handled.calls || [],
+        });
+        emit('done', { conversation: updated });
+        return { reply, silent: handled.silent === true, conversationId: conversation.id, conversation: updated };
+      }
       const instructions = [
         `You are ${cfg.profile.assistantName || "Carvis"}, a helpful conversational assistant. ${cfg.profile.personality || ""}`,
         cfg.profile.displayName
@@ -45,15 +79,7 @@ export class Chat {
       for (let round = 0; round < 8; round++) {
         signal?.throwIfAborted();
         const enabled = await this.registry.tools({ signal });
-        const events = conversation.messages
-          .filter(
-            (m) =>
-              m.role === "event" &&
-              m.event?.type === "confirmation_result" &&
-              m.event?.source === "carvis_registry",
-          )
-          .slice(-16)
-          .map((m) => ({ ...m.event, recordedAt: m.createdAt }));
+        const events = executionRecords(conversation);
         const system = await this.registry.sanitize(
           [
             instructions,

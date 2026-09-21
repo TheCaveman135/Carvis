@@ -1,0 +1,10 @@
+{
+  "name": "carvis-assistant-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Optional full Carvis assistant runtime, isolated behind the integration registry.",
+  "engines": { "node": ">=22.18" },
+  "scripts": { "test": "node --test test/*.test.js" },
+  "dependencies": { "@anthropic-ai/sdk": "^0.115.0", "sharp": "^0.35.4" }
+}

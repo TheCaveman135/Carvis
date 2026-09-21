@@ -20,7 +20,7 @@ import {
 } from "./auth.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 function fail(message, status = 400) {
   return Object.assign(Error(message), { status });
 }
@@ -80,8 +80,10 @@ export async function createApp({
   } else {
     for (const id of ["home-assistant", "apple-tv", "even-realities"]) {
       const { default: module } = await import(`./integrations/${id}.js`);
-      registry.register(module);
+      registry.register({ ...module, fields: structuredClone(module.fields) });
     }
+    const { registerAssistantServices } = await import('./integrations/assistant-services.js');
+    registerAssistantServices(registry);
     await registry.load(
       process.env.CARVIS_INTEGRATIONS_DIR ||
         join(dataDirectory, "integrations"),
@@ -116,20 +118,21 @@ export async function createApp({
           403,
         );
       const devicePath = path.startsWith("/api/integrations/even-realities/");
+      const rawModule = registry.rawModule(req.method === 'OPTIONS' ? String(req.headers['access-control-request-method'] || 'GET') : req.method, path);
       const bearer = String(req.headers.authorization || "").replace(
         /^Bearer /i,
         "",
       );
       const glasses = store.config.integrations["even-realities"];
-      const device =
+      const device = rawModule?.authorizeDevice?.(req, path) ||
         devicePath &&
         glasses?.enabled &&
         sameSecret(bearer, glasses.config?.pairingToken);
-      if (req.method === "OPTIONS" && devicePath) {
+      if (req.method === "OPTIONS" && (devicePath || rawModule?.deviceRoute?.(String(req.headers['access-control-request-method'] || 'GET'), path))) {
         res.writeHead(204, {
           "Access-Control-Allow-Origin": req.headers.origin || "*",
           "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Authorization, Content-Type",
+          "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Carvis-Core-Token",
           Vary: "Origin",
         });
         return res.end();
@@ -213,6 +216,11 @@ export async function createApp({
       }
       if (path.startsWith("/api/") && !user && !device)
         throw fail("Sign in to Carvis.", 401);
+      if (rawModule) {
+        if (!user && !device) throw fail('Sign in to Carvis.', 401);
+        req.carvisAuthenticatedAs = device ? 'device' : 'owner';
+        return await rawModule.rawRoute(req, res, parsed);
+      }
       if (path === "/api/logout" && req.method === "POST")
         return json(
           res,
@@ -277,6 +285,7 @@ export async function createApp({
         }
         store.config = next;
         store.saveConfig();
+        await registry.configurationChanged();
         return json(res, 200, {
           success: true,
           profile: next.profile,
@@ -456,18 +465,49 @@ export async function createApp({
       else res.end();
     }
   });
+  await registry.start();
+  server.on('close', () => registry.close().catch(() => {}));
   return { server, store, registry, chat };
 }
 if (
   process.argv[1] &&
   pathToFileURL(resolve(process.argv[1])).href === import.meta.url
 ) {
-  const { server } = await createApp();
+  const { server, registry } = await createApp();
   const port = Number(process.env.PORT || 8788),
     host = process.env.HOST || "127.0.0.1";
-  server.listen(port, host, () =>
-    console.log(`Carvis ${VERSION} is ready at http://${host}:${port}`),
-  );
+  const addresses = [...new Set((process.env.CARVIS_LISTEN_HOSTS || host).split(',').map(value => value.trim()).filter(Boolean))];
+  let shuttingDown = false;
+  const retryTimers = new Set();
+  const servers = addresses.map((address, index) => {
+    const listener = index ? http.createServer(server.listeners('request')[0]) : server;
+    const listen = () => {
+      if (!shuttingDown) listener.listen(port, address);
+    };
+    listener.on('listening', () => console.log(`Carvis ${VERSION} is ready at http://${address}:${port}`));
+    listener.on('error', error => {
+      if (error.code === 'EADDRNOTAVAIL' && !shuttingDown) {
+        // A configured VPN interface can appear after the service starts.
+        // Keep available interfaces serving while waiting for that address.
+        const timer = setTimeout(() => { retryTimers.delete(timer); listen(); }, 5000);
+        retryTimers.add(timer);
+        return;
+      }
+      console.error(`Carvis could not listen on ${address}:${port}: ${error.message}`);
+      process.exitCode = 1;
+      process.emit('SIGTERM');
+    });
+    listen();
+    return listener;
+  });
   for (const signal of ["SIGTERM", "SIGINT"])
-    process.on(signal, () => server.close(() => process.exit(0)));
+    process.on(signal, async () => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+      for (const timer of retryTimers) clearTimeout(timer);
+      const timeout = setTimeout(() => process.exit(0), 5000); timeout.unref();
+      await registry.close();
+      await Promise.all(servers.map(listener => new Promise(resolve => { listener.close(resolve); listener.closeAllConnections(); })));
+      process.exit(process.exitCode || 0);
+    });
 }

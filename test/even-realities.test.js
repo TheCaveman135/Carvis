@@ -5,8 +5,8 @@ import even, {
   normalizeWidget,
   pcmToWav,
 } from "../server/integrations/even-realities.js";
-import { WidgetFocus } from "../integrations/even-realities/src/focus.ts";
-import { UtteranceDetector } from "../integrations/even-realities/src/audio.ts";
+import { WidgetFocus } from "../integrations/even-realities/basic/focus.ts";
+import { UtteranceDetector } from "../integrations/even-realities/basic/audio.ts";
 
 function context(overrides = {}) {
   const state = new Map(),

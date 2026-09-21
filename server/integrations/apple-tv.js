@@ -32,7 +32,7 @@ export function validateConfig(config = {}) {
   const context = String(config.context || "").trim();
   if (context.length > 6000)
     throw Error("Keep TV context under 6,000 characters.");
-  return { addonSlug, remoteEntity, mediaPlayerEntity, context };
+  return { addonSlug, remoteEntity, mediaPlayerEntity, context, silentNavigation: config.silentNavigation !== false, shortReplies: config.shortReplies !== false };
 }
 function home(ctx) {
   if (!ctx.registry?.getConfig)
@@ -295,7 +295,7 @@ export default {
       label: "Apple TV remote entity",
       type: "text",
       description:
-        "Your actual remote entity ID, selected in the Home Assistant integration.",
+        "Remote ID configured in the AI controller. Permission for navigation can come from your selected TV media-player entity; the remote need not be exposed to Carvis.",
     },
     {
       key: "mediaPlayerEntity",
@@ -311,6 +311,8 @@ export default {
       description:
         "Optional app preferences and useful guidance, such as which streaming services you use. Sent only to this TV controller.",
     },
+    { key: 'silentNavigation', label: 'Silent successful navigation', type: 'boolean', default: true, group: 'Reply behavior', description: 'Keep directional and Select commands quiet when they succeed. Failures and confirmations are still shown.' },
+    { key: 'shortReplies', label: 'Short power and playback replies', type: 'boolean', default: true, group: 'Reply behavior', description: 'Use one brief acknowledgement for successful power and playback commands.' },
   ],
   validateConfig,
   async test(ctx) {
@@ -436,7 +438,7 @@ export default {
       {
         name: "tv_button",
         description:
-          "Send one navigation button through the AI TV controller. Successful navigation should stay silent; do not send a second direct HA remote command.",
+          `Send one navigation button through the AI TV controller. ${validateConfig(ctx.config).silentNavigation ? 'Successful navigation should stay silent.' : 'Give a brief acknowledgement on success.'} Do not send a second direct HA remote command.`,
         parameters: schema(
           {
             button: {
@@ -456,7 +458,7 @@ export default {
         ),
         async confirmation(args) {
           const a = await authorize(ctx, {
-            entityId: validateConfig(ctx.config).remoteEntity,
+            entityId: validateConfig(ctx.config).mediaPlayerEntity || validateConfig(ctx.config).remoteEntity,
             service: "send_command",
           });
           return !a.ha.config.dryRun && a.protected
@@ -469,21 +471,18 @@ export default {
             throw Error(
               "Configure the TV remote entity to use navigation buttons.",
             );
-          return executeCommand(
-            ctx,
-            {
-              entity_id: cfg.remoteEntity,
-              service: "send_command",
-              command: args.button,
-            },
-            opts,
-          );
+          const a = await authorize(ctx, { entityId: cfg.mediaPlayerEntity || cfg.remoteEntity, service: 'send_command' });
+          const blocked = confirmation(a, `TV button: ${args.button}`, opts);
+          if (blocked) return blocked;
+          const run = await request(ctx, '/api/command', { request_id: randomUUID(), entity_id: cfg.remoteEntity, service: 'send_command', data: { command: args.button } });
+          if (run.status !== 'completed') throw Error('The controller has not confirmed the command. Check task status before retrying.');
+          return { success: true, id: run.id, status: run.status, verified: false, silent: cfg.silentNavigation, message: cfg.silentNavigation ? '' : `TV ${args.button} accepted.` };
         },
       },
       {
         name: "tv_command",
         description:
-          "Power, playback, volume, or navigation through the AI TV controller exclusively. Use configured TV entity IDs and typed Home Assistant parameters. Prefer no narration on successful navigation and one short reply for power or playback.",
+          `Power, playback, volume, or navigation through the AI TV controller exclusively. Use configured TV entity IDs and typed Home Assistant parameters. ${validateConfig(ctx.config).silentNavigation ? 'Successful navigation should stay silent.' : 'Acknowledge successful navigation briefly.'} ${validateConfig(ctx.config).shortReplies ? 'Use one short reply for power or playback.' : 'Explain power or playback results naturally.'}`,
         parameters: commandSchema,
         async confirmation(args) {
           const a = await authorize(ctx, {
@@ -510,7 +509,7 @@ export default {
     const targets = [cfg.mediaPlayerEntity, cfg.remoteEntity].filter((id) =>
       selected.includes(id),
     );
-    return `Apple TV control uses the AI controller exclusively, with no direct remote fallback. Configured TV targets: ${targets.join(", ") || "none selected"}. Use tv_context to steer a running task instead of restarting it. Prefer no narration on successful navigation; keep power/playback replies short.`;
+    return `Apple TV control uses the AI controller exclusively, with no direct remote fallback. Configured TV targets: ${targets.join(", ") || "none selected"}. Use tv_context to steer a running task instead of restarting it. ${cfg.silentNavigation ? 'Successful navigation should stay silent.' : 'Briefly acknowledge navigation.'} ${cfg.shortReplies ? 'Keep power/playback replies to one short sentence.' : 'Use the normal conversational reply style for power/playback.'}`;
   },
   async route({ method, path }, ctx) {
     if (method === "GET" && path === "/status") {
@@ -548,9 +547,9 @@ async function executeCommand(ctx, args, opts) {
     id: run.id,
     status: run.status,
     verified: false,
-    silent: args.service === "send_command",
+    silent: args.service === "send_command" && a.cfg.silentNavigation,
     message:
-      args.service === "send_command"
+      args.service === "send_command" && a.cfg.silentNavigation
         ? ""
         : `TV ${args.service.replaceAll("_", " ")} accepted.`,
   };

@@ -1,0 +1,874 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Carvis · Integration workspace</title>
+    <link rel="stylesheet" href="/integrations/assistant-engine/styles.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='none' stroke='%23ffb020' stroke-width='3'/><circle cx='16' cy='16' r='5' fill='%233ecbff'/></svg>"
+    />
+  </head>
+  <body>
+    <section class="auth-gate" id="authGate" hidden>
+      <form class="auth-card" id="authForm" novalidate>
+        <div class="auth-mark">◉</div>
+        <h1>Carvis</h1>
+        <p class="auth-sub" id="authIntro">Checking access…</p>
+        <label id="authUsernameField">Username
+          <input id="authUsername" name="username" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="64" required />
+        </label>
+        <label>Password
+          <input id="authPassword" name="password" type="password" autocomplete="current-password" minlength="12" maxlength="256" required />
+        </label>
+        <label id="authPasswordConfirmField" hidden>Confirm password
+          <input id="authPasswordConfirm" type="password" autocomplete="new-password" minlength="12" maxlength="256" />
+        </label>
+        <button class="btn primary auth-submit" id="authSubmit" type="submit">Sign in</button>
+        <p class="auth-error" id="authError" role="alert" hidden></p>
+        <p class="auth-help" id="authHelp">Your login stays on this device for 30 days. The G2 continues using its separate device token.</p>
+      </form>
+    </section>
+    <header class="hud-shell-top">
+      <div class="brand">
+        <span class="pulse-ring"><span class="pulse" id="brandPulse"></span></span>
+        <div>
+          <strong>Carvis</strong>
+          <small>Integration workspace</small>
+        </div>
+      </div>
+      <div class="hud-systems">
+        <div class="statline"><span class="dot" id="haDot"></span><span id="haStatusText">Home Assistant…</span></div>
+        <div class="statline"><span class="dot" id="ollamaDot"></span><span id="ollamaStatusText">Models…</span></div>
+        <div class="statline"><span class="dot" id="atlasDot"></span><span id="atlasStatusText">Atlas…</span></div>
+        <div class="statline"><span class="dot" id="voiceDot"></span><span id="voiceStatusText">Voice…</span></div>
+        <div class="statline" id="glassesStatline" title=""><span class="dot" id="glassesDot"></span><span id="glassesStatusText">Glasses…</span></div>
+      </div>
+      <a class="btn tiny ghost logout-btn" id="logoutBtn" href="/">Back to Carvis</a>
+    </header>
+
+    <div class="hud-body">
+      <nav id="nav" class="rail">
+        <div class="sidebar-label">Operations</div>
+        <button class="nav-item active" data-view="dashboard">
+          <span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="1.5" width="5.5" height="5.5"/><rect x="9" y="1.5" width="5.5" height="5.5"/><rect x="1.5" y="9" width="5.5" height="5.5"/><rect x="9" y="9" width="5.5" height="5.5"/></svg></span> Dashboard
+        </button>
+        <button class="nav-item" data-view="carvis">
+          <span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.2" cy="8" r="2.7"/><circle cx="11.8" cy="8" r="2.7"/><path d="M6.9 8h2.2"/></svg></span> Carvis
+        </button>
+        <button class="nav-item" data-view="automations">
+          <span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="2.5" cy="8" r="1.5"/><rect x="6" y="3" width="4" height="3"/><rect x="6" y="10" width="4" height="3"/><circle cx="13.5" cy="8" r="1.5"/><path d="M4 8h1.2c.8 0 1.3-.5 1.3-1.3V6M10 4.5h.5c1 0 1.5.5 1.5 1.5v.5M4 8h1.2c.8 0 1.3.5 1.3 1.3V10M10 11.5h.5c1 0 1.5-.5 1.5-1.5v-.5"/></svg></span> Protocols
+        </button>
+        <button class="nav-item" data-view="transcript">
+          <span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5h12M2 8h12M2 12.5h7"/></svg></span> Transcript
+        </button>
+        <button class="nav-item" data-view="trace">
+          <span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="3" cy="3" r="1.6"/><circle cx="13" cy="8" r="1.6"/><circle cx="3" cy="13" r="1.6"/><path d="M4.5 3.8L11.5 7.2M11.5 8.8L4.5 12.2"/></svg></span> Trace
+        </button>
+        <button class="nav-item" data-view="chat">
+          <span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 3.5h11v6.5H6.2L3.2 12.8V10H2.5z"/></svg></span> Chat
+        </button>
+        <div class="sidebar-label">Configuration</div>
+        <button class="nav-item" data-view="entities">
+          <span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h7M2 8h7M2 12h7"/><circle cx="12.5" cy="4" r="1.5"/><circle cx="12.5" cy="8" r="1.5"/><circle cx="12.5" cy="12" r="1.5"/></svg></span> Entities
+        </button>
+        <button class="nav-item" data-view="behavior">
+          <span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13V6M8 13V3M13 13V9"/><path d="M1.5 6h3M6.5 3h3M11.5 9h3"/></svg></span> Personality
+        </button>
+        <button class="nav-item" data-view="models">
+          <span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="8" height="8"/><path d="M6 1.5v2M10 1.5v2M6 12.5v2M10 12.5v2M1.5 6h2M1.5 10h2M12.5 6h2M12.5 10h2"/></svg></span> Models
+        </button>
+        <button class="nav-item" data-view="tools">
+          <span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 2.5a3 3 0 0 0-3.9 3.9L2 11l2 2 4.6-4.6a3 3 0 0 0 3.9-3.9l-2 2-1.4-1.4z"/></svg></span> Tools
+        </button>
+        <button class="nav-item" data-view="settings">
+          <span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.3"/><path d="M8 1.8v1.6M8 12.6v1.6M14.2 8h-1.6M3.4 8H1.8M12.3 3.7l-1.1 1.1M4.8 11.1l-1.1 1.1M12.3 12.3l-1.1-1.1M4.8 4.9 3.7 3.8"/></svg></span> Settings
+        </button>
+      </nav>
+
+      <main>
+      <!-- ── Dashboard ─────────────────────────────────────────── -->
+      <section class="view active" id="view-dashboard">
+        <header class="topbar">
+          <h1>Dashboard</h1>
+        </header>
+
+        <div class="hud-hero">
+          <div class="hud-hero-readout">
+            <span class="badge warn" id="dryRunBadge" title="Deciding and logging, but nothing is sent to Home Assistant. Turn off in Behavior." hidden>DRY RUN</span>
+            <p class="hud-hero-sub" id="tickSub">Idle</p>
+          </div>
+          <div class="hud-hero-actions">
+            <button class="btn ghost" id="restartBtn" title="Restart the server process">Restart</button>
+          </div>
+        </div>
+
+        <div class="grid-2 grid-2--lopsided">
+          <div class="card">
+            <div class="card-head">
+              <h2>Recent changes</h2>
+              <span class="muted" id="thinkMeta"></span>
+            </div>
+            <div id="thinkBody" class="think-body">
+              <p class="empty">Nothing changed yet. Protocols and spoken commands show up here as they act.</p>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <h2>Activity</h2>
+              <button class="btn tiny ghost" id="clearLogBtn">Clear</button>
+            </div>
+            <div class="log" id="logList"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>Watched rooms</h2>
+            <span class="muted" id="watchCount"></span>
+          </div>
+          <div id="areaGrid" class="area-grid">
+            <p class="empty">Nothing selected yet — open <strong>Entities</strong> and pick what the agent can see and control.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Transcript ───────────────────────────────────────── -->
+      <section class="view" id="view-transcript">
+        <header class="topbar">
+          <div>
+            <h1>Transcript</h1>
+            <p class="sub">Every final spoken utterance Carvis receives, plus typed WebUI requests, and the route it actually took.</p>
+          </div>
+          <div class="topbar-actions">
+            <span class="muted" id="transcriptMeta"></span>
+            <button class="btn ghost" id="transcriptClearBtn">Clear</button>
+            <button class="btn" id="transcriptRefreshBtn">Refresh</button>
+          </div>
+        </header>
+
+        <div class="console-note transcript-safety-note">
+          <strong>Private, local history.</strong> Kept in Carvis's own database on this Mac — never sent to Atlas. Owner wording also appears in its matching Execution trace card; Clear removes this history from memory and disk.
+        </div>
+
+        <div class="transcript-list" id="transcriptList">
+          <p class="empty">Nothing heard yet this session.</p>
+        </div>
+      </section>
+
+      <!-- ── Trace ─────────────────────────────────────────────── -->
+      <section class="view" id="view-trace">
+        <header class="topbar">
+          <div>
+            <h1>Execution trace</h1>
+            <p class="sub">A plain-English, block-style flow of what Carvis received, checked, did, and what happened.</p>
+          </div>
+          <div class="topbar-actions">
+            <span class="muted" id="traceMeta"></span>
+            <button class="btn" id="traceRefreshBtn">Refresh</button>
+          </div>
+        </header>
+
+        <div class="console-note trace-safety-note">
+          <strong>Follow each turn.</strong> Trigger → model → tools → result. Cards show returned states, requested settings, failures, and elapsed time from the start (+). Expand a card for audit details. Queued commands and accepted speech are not proof of device execution. Prompts, private tool text, hidden reasoning, and credentials stay private.
+        </div>
+
+        <div class="trace-list" id="traceList">
+          <p class="empty">No Carvis invocations recorded yet.</p>
+        </div>
+      </section>
+
+      <!-- ── Carvis ────────────────────────────────────────────── -->
+      <section class="view" id="view-carvis">
+        <header class="topbar">
+          <div>
+            <h1>Carvis</h1>
+            <p class="sub" id="carvisSub">What the glasses are showing.</p>
+          </div>
+        </header>
+
+        <div class="banner bad" id="bindWarning" hidden></div>
+
+        <div class="card carvis-hero">
+          <div class="card-head">
+            <h2>On the glasses</h2>
+            <div class="row-inline">
+              <span class="badge" id="glassesStateBadge">UNKNOWN</span>
+              <button class="btn tiny ghost" id="hudClearBtn" title="Request that the G2 clear its HUD">Clear</button>
+            </div>
+          </div>
+          <div class="g2-screen" id="glassesScreen" aria-live="polite"></div>
+          <p class="muted pad" id="hudNote"></p>
+        </div>
+
+        <details class="card tv-panel" id="tvPanel">
+          <summary>Apple TV <span class="muted">Screen, progress &amp; controls</span></summary>
+          <div class="tv-body">
+            <div>
+              <div class="tv-preview"><img id="tvPreview" alt="Current Apple TV screen" hidden><p id="tvPreviewNote" class="muted">Load a snapshot to see the TV screen.</p></div>
+              <button class="btn tiny ghost" id="tvPreviewRefresh" type="button">Refresh screen</button>
+              <span class="muted" id="tvPreviewTime"></span>
+            </div>
+            <div class="tv-controls">
+              <div class="card-head"><strong id="tvStatus">Not connected yet</strong><button class="btn tiny ghost" id="tvRefresh" type="button">Refresh status</button></div>
+              <p id="tvGoal"></p><p id="tvProgress" class="muted" role="status" aria-live="polite"></p>
+              <p id="tvObservation" class="muted"></p><p id="tvContextState" class="muted"></p>
+              <form id="tvTaskForm"><label for="tvTaskText">What would you like to watch?</label><div class="tv-input"><input id="tvTaskText" maxlength="2000" placeholder="Find a movie on Netflix" required><button class="btn primary" id="tvStart" type="submit">Start</button></div></form>
+              <form id="tvContextForm"><label for="tvContextText">Add context to the running task</label><div class="tv-input"><input id="tvContextText" maxlength="2000" placeholder="It’s on Netflix, not Prime" required><button class="btn" id="tvUpdate" type="submit" disabled>Send</button></div></form>
+              <button class="btn tiny ghost" id="tvStop" type="button" disabled>Stop task</button>
+              <p id="tvActionNote" class="muted" role="status" aria-live="polite"></p>
+            </div>
+          </div>
+        </details>
+
+        <div class="carvis-columns">
+          <div class="card">
+            <div class="card-head">
+              <h2>Feed</h2>
+              <span class="muted" id="feedMeta"></span>
+            </div>
+            <div class="log" id="feedList">
+              <p class="empty">Nothing yet. Say something, or type below to test without the glasses.</p>
+            </div>
+            <form class="chat-input" id="sayForm">
+              <textarea id="sayText" rows="1" placeholder="Type what you would say out loud…" spellcheck="false"></textarea>
+              <button class="btn primary" id="saySend" type="submit">Say</button>
+            </form>
+            <div class="pad">
+              <label class="btn tiny" for="sayImage">Attach image</label>
+              <input id="sayImage" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+              <span id="sayImageStatus" class="muted" role="status">Ask “Where is my cat?” to check your selected cameras.</span>
+              <button class="btn tiny ghost" id="sayImageRemove" type="button" hidden>Remove image</button>
+              <p class="muted">Photos and camera snapshots are sent to Luna for inspection. Attachments expire after 15 minutes. JPEG, PNG or WebP, up to 6 MB.</p>
+            </div>
+          </div>
+
+          <div>
+            <div class="card">
+              <div class="card-head">
+                <h2>Waiting on</h2>
+                <span class="muted" id="watchMeta"></span>
+              </div>
+              <div id="watchPanel"><p class="empty">Nothing pending. Ask Carvis to tell you when something happens, and it saves a protocol.</p></div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <h2>Noticing</h2>
+                <span class="muted" id="classifierMeta"></span>
+              </div>
+              <p class="muted pad" id="classifierPanel"></p>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <h2>Spend</h2>
+                <span class="muted" id="costMeta"></span>
+              </div>
+              <div id="costPanel"><p class="empty">No model calls yet.</p></div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <h2>Heard</h2>
+                <span class="muted" id="voiceStats"></span>
+              </div>
+              <p class="muted pad" id="voiceExplain"></p>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <h2>Project Atlas</h2>
+                <button class="btn tiny ghost" id="atlasRefreshBtn">Refresh</button>
+              </div>
+              <div id="atlasPanel"><p class="empty">Not connected.</p></div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <h2>The Mac</h2>
+                <span class="muted" id="macMeta"></span>
+              </div>
+              <div id="macPanel"><p class="empty">Nothing sent yet.</p></div>
+              <form class="chat-input" id="macForm">
+                <textarea id="macText" rows="1" placeholder="Send a command, e.g. open Fusion 360" spellcheck="false"></textarea>
+                <button class="btn" id="macSend" type="submit">Send</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Automations ─────────────────────────────────────── -->
+      <section class="view automations-view" id="view-automations">
+        <header class="topbar">
+          <div>
+            <h1>Protocols</h1>
+            <p class="sub">Standing orders Carvis can build, test, and run without keeping a model awake.</p>
+          </div>
+          <div class="topbar-actions">
+            <button class="btn ghost" id="automationAskBtn">Ask Carvis</button>
+            <button class="btn primary" id="automationNewBtn">New protocol</button>
+          </div>
+        </header>
+
+        <div id="automationListScreen">
+          <div class="automation-metrics" id="automationMetrics" aria-label="Protocol status"></div>
+
+          <details class="card automation-templates">
+            <summary><h2>Start from a template</h2></summary>
+            <p class="muted pad">Templates open as paused drafts. Nothing runs until you review, save, and enable it.</p>
+            <div class="automation-template-grid" id="automationTemplates">
+              <button class="automation-template" data-template="arrival">
+                <strong>Evening arrival</strong><small>Location › time › welcome</small>
+              </button>
+              <button class="automation-template" data-template="timer">
+                <strong>Timer finished</strong><small>Timer › speak and show</small>
+              </button>
+              <button class="automation-template" data-template="weather">
+                <strong>Weather alert</strong><small>Temperature › HUD warning</small>
+              </button>
+              <button class="automation-template" data-template="camera">
+                <strong>Camera on HUD</strong><small>Time + location › live camera</small>
+              </button>
+            </div>
+          </details>
+
+          <div class="filters automation-filters">
+            <input type="search" id="automationSearch" placeholder="Search protocols…" autocomplete="off" />
+            <select id="automationStatusFilter" aria-label="Filter protocols by status">
+              <option value="">All statuses</option>
+              <option value="enabled">Running</option>
+              <option value="disabled">Paused</option>
+              <option value="failed">Needs attention</option>
+            </select>
+          </div>
+
+          <div class="automation-list" id="automationList">
+            <p class="empty">Loading protocols…</p>
+          </div>
+        </div>
+
+        <article class="automation-editor" id="automationEditor" hidden>
+          <header class="automation-editor-head">
+            <button class="btn ghost" id="automationBackBtn">Back</button>
+            <div class="automation-editor-title">
+              <label for="automationName">Name</label>
+              <input id="automationName" type="text" maxlength="120" placeholder="Name this protocol" />
+            </div>
+            <label class="switch automation-enabled"><input type="checkbox" id="automationEnabled" /><span></span> Enabled</label>
+            <span class="muted" id="automationDirtyState"></span>
+          </header>
+
+          <label class="automation-description">Description
+            <input id="automationDescription" type="text" maxlength="1000" placeholder="Optional — what this rule is for" />
+          </label>
+
+          <div class="automation-editor-note">
+            <strong>Protocols run locally and deterministically.</strong>
+            Actions still cross the Tool Gateway. Sensitive tools cannot run unattended; wake Carvis when an owner confirmation is required.
+          </div>
+
+          <div class="automation-lane" id="automationLane" role="list" tabindex="0" aria-label="Protocol block flow"></div>
+
+          <details class="automation-test-fixture">
+            <summary>Dry-run fixture (optional)</summary>
+            <p class="muted">Override references with <code>{"values":{"time.hour":20}}</code>. To exercise <code>changed_to</code>, add <code>{"change":{"ref":"ha.light.office.state","from":"off","to":"on"}}</code>. You can also provide <code>event</code> and <code>at</code>; nothing is executed.</p>
+            <textarea id="automationTestValues" rows="4" spellcheck="false" aria-label="Dry-run reference values">{}</textarea>
+          </details>
+
+          <section class="automation-validation" id="automationValidation" aria-live="polite"></section>
+          <section class="automation-test-panel" id="automationTestPanel" aria-live="polite" hidden></section>
+
+          <details class="card automation-advanced" id="automationAdvanced">
+            <summary><h2>Advanced JSON</h2></summary>
+            <p class="muted pad">The visual blocks and JSON are the same protocol. Use this for deep nesting or action payloads the form does not expose yet.</p>
+            <textarea id="automationJson" rows="20" spellcheck="false" aria-label="Protocol JSON"></textarea>
+            <div class="row-actions">
+              <button class="btn ghost" id="automationJsonCopyBtn" type="button">Copy</button>
+              <button class="btn" id="automationJsonApplyBtn" type="button">Apply JSON</button>
+            </div>
+          </details>
+
+          <details class="card automation-history" id="automationHistoryCard">
+            <summary><h2>History</h2></summary>
+            <div id="automationHistory"><p class="empty">Save this protocol to record and view its runs.</p></div>
+          </details>
+
+          <footer class="automation-editor-actions">
+            <div class="row-actions automation-secondary-actions">
+              <button class="btn ghost" id="automationDuplicateBtn" type="button">Duplicate</button>
+              <button class="btn ghost" id="automationArchiveBtn" type="button">Archive</button>
+            </div>
+            <div class="row-actions">
+              <button class="btn ghost" id="automationTestBtn" type="button">Test</button>
+              <button class="btn primary" id="automationSaveBtn" type="button">Save</button>
+            </div>
+          </footer>
+        </article>
+
+        <datalist id="automationRefOptions"></datalist>
+        <datalist id="automationEntityOptions"></datalist>
+        <datalist id="automationCameraOptions"></datalist>
+        <datalist id="automationSpeakerOptions"></datalist>
+      </section>
+
+      <!-- ── Models ────────────────────────────────────────────── -->
+      <section class="view" id="view-models">
+        <header class="topbar">
+          <div>
+            <h1>Models</h1>
+            <p class="sub">Each job picks its own model. Keep the always-on ones local and they cost nothing.</p>
+          </div>
+          <div class="topbar-actions">
+            <button class="btn" id="refreshAllModelsBtn">Refresh lists</button>
+            <button class="btn primary" id="saveRolesBtn">Save</button>
+          </div>
+        </header>
+
+        <div class="card">
+          <h2>Roles</h2>
+          <p class="muted">Guards: Automatic uses device detection. Standard uses your chosen level instead of automatic device protection. Protected requires a live owner request and a wake word or confirmation. Your selection overrides the automatic guard. Click Save selection to apply.</p>
+          <div class="table-wrap">
+            <table class="entities">
+              <thead>
+                <tr><th>Role</th><th>What it does</th><th>Provider</th><th>Model</th><th>Effort</th></tr>
+              </thead>
+              <tbody id="rolesBody"></tbody>
+            </table>
+          </div>
+          <p class="muted pad" id="rolesHint"></p>
+        </div>
+
+        <div class="card">
+          <h2>Providers</h2>
+          <p class="muted">
+            API keys are never stored here. Put them in <code>.env</code> next to <code>config.json</code> —
+            under launchd this process gets none of your shell's environment.
+          </p>
+          <p class="muted">Guards: Automatic uses device detection. Standard uses your chosen level instead of automatic device protection. Protected requires a live owner request and a wake word or confirmation. Your selection overrides the automatic guard. Click Save selection to apply.</p>
+          <div class="table-wrap">
+            <table class="entities">
+              <thead>
+                <tr><th>Provider</th><th>Kind</th><th>Base URL</th><th>Key variable</th><th>Status</th></tr>
+              </thead>
+              <tbody id="providersBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Tools ─────────────────────────────────────────────── -->
+      <section class="view" id="view-tools">
+        <header class="topbar">
+          <div>
+            <h1>Tools</h1>
+            <p class="sub">The capabilities Carvis can call while it reasons. Every call is validated, risk-checked, and audited.</p>
+          </div>
+          <span class="muted" id="toolsMeta"></span>
+        </header>
+
+        <div class="card">
+          <div class="tools-intro">
+            <p>These are the real tools in Carvis’s gateway—not a wish list. A tool being reachable here does not bypass its own safety checks.</p>
+            <p class="muted">“Reachable from” reflects the current risk policy. Home Assistant and service-specific guards can still refuse an unsafe request.</p>
+          </div>
+          <div class="filters">
+            <input type="search" id="toolSearch" placeholder="Search tools or capabilities…" autocomplete="off" />
+            <select id="toolRiskFilter" aria-label="Filter tools by risk level">
+              <option value="">All risk levels</option>
+              <option value="0">Read</option>
+              <option value="1">Low</option>
+              <option value="2">Medium</option>
+              <option value="3">Sensitive</option>
+              <option value="4">Critical</option>
+            </select>
+          </div>
+          <div class="table-wrap tools-table-wrap">
+            <table class="entities tools-table">
+              <thead>
+                <tr><th>Tool</th><th>What it does</th><th>Risk</th><th>Reachable from</th><th>Retries safely</th></tr>
+              </thead>
+              <tbody id="toolsBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Chat ──────────────────────────────────────────────── -->
+      <section class="view" id="view-chat">
+        <header class="topbar">
+          <div>
+            <h1>Chat</h1>
+            <p class="sub">Ask why it did something, or tell it how you want the home run.</p>
+          </div>
+          <div class="topbar-actions">
+            <button class="btn tiny ghost" id="chatContextBtn">What it can see</button>
+            <a class="btn tiny ghost" href="/integrations/assistant-engine/live.html">Talk to Carvis</a>
+            <button class="btn tiny ghost" id="chatClearBtn">New conversation</button>
+          </div>
+        </header>
+
+        <div class="card chat-card">
+          <div class="chat-log" id="chatLog">
+            <div class="chat-intro">
+              <p>It sees your live home state, the current room verdicts, and what it recently changed. Try:</p>
+              <div class="suggestions">
+                <button class="chip suggest">Why is the bedroom light still on?</button>
+                <button class="chip suggest">What can you actually control right now?</button>
+                <button class="chip suggest">Which rooms can you not turn lights off in, and why?</button>
+                <button class="chip suggest">Never turn off the lights in the workspace.</button>
+              </div>
+            </div>
+          </div>
+
+          <form class="chat-input" id="chatForm">
+            <textarea id="chatText" rows="1" placeholder="Ask a question, or give it a standing instruction…" spellcheck="false"></textarea>
+            <button class="btn primary" id="chatSend" type="submit">Send</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ── Entities ──────────────────────────────────────────── -->
+      <section class="view" id="view-entities">
+        <header class="topbar">
+          <div>
+            <h1>Entities</h1>
+            <p class="sub">
+              <strong>Observe</strong> = the agent sees it. <strong>Control</strong> = the agent may act on it.
+            </p>
+          </div>
+          <div class="topbar-actions">
+            <span class="muted" id="selCount"></span>
+            <button class="btn primary" id="saveEntitiesBtn">Save selection</button>
+          </div>
+        </header>
+
+        <div class="card">
+          <div class="filters">
+            <input type="search" id="entSearch" placeholder="Search name, entity id, area…" />
+            <select id="entArea"><option value="">All rooms</option></select>
+            <select id="entDomain"><option value="">All types</option></select>
+            <label class="check"><input type="checkbox" id="entOnlySelected" /> Selected only</label>
+            <div class="spacer"></div>
+            <button class="btn tiny" id="bulkObserve">Observe all shown</button>
+            <button class="btn tiny" id="bulkControl">Control all shown</button>
+            <button class="btn tiny" id="bulkClear">Clear all shown</button>
+          </div>
+          <p class="muted">Guards: Automatic uses device detection. Standard uses your chosen level instead of automatic device protection. Protected requires a live owner request and a wake word or confirmation. Your selection overrides the automatic guard. Click Save selection to apply.</p>
+          <div class="table-wrap">
+            <table class="entities">
+              <thead>
+                <tr>
+                  <th>Entity</th>
+                  <th>Room</th>
+                  <th>State</th>
+                  <th class="center">Observe</th>
+                  <th class="center">Control</th><th>Guard</th>
+                </tr>
+              </thead>
+              <tbody id="entBody"></tbody>
+            </table>
+          </div>
+          <p class="muted pad" id="entFooter"></p>
+        </div>
+      </section>
+
+      <!-- ── Behavior ──────────────────────────────────────────── -->
+      <section class="view" id="view-behavior">
+        <header class="topbar">
+          <div>
+            <h1>Personality</h1>
+            <p class="sub">Who Carvis is, what it remembers, and the rules it may not break.</p>
+          </div>
+          <div class="topbar-actions">
+            <button class="btn primary" id="saveBehaviorBtn">Save</button>
+          </div>
+        </header>
+
+        <div class="card">
+          <h2>Voice</h2>
+          <p class="muted">
+            How Carvis speaks — manner, not facts. This never changes what it reports happened, only
+            how it says it.
+          </p>
+          <textarea id="personality" rows="12" spellcheck="false"></textarea>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>Memory</h2>
+            <span class="muted" id="memoryMeta"></span>
+          </div>
+          <p class="muted">
+            What Carvis has learned about you, and what it is bound by. A <strong>house rule</strong>
+            is a standing instruction it may not break — "never turn a bedroom light on after 22:00".
+            A <strong>preference</strong> shapes how it acts — sleep hours, how you like to be spoken
+            to. A <strong>fact</strong> is looked up when relevant. Rules and preferences are in front
+            of Carvis on every single turn; facts only when they match. Anything tagged
+            <em>Carvis</em> it wrote on its own; delete freely. Anything tagged <em>you</em> is yours —
+            Carvis cannot edit or remove it.
+          </p>
+          <form class="chat-input" id="memoryAddForm">
+            <input type="text" id="memoryAddText" placeholder="Add something Carvis should know or remember about you…" spellcheck="false" />
+            <select id="memoryAddKind">
+              <option value="fact">Fact</option>
+              <option value="preference">Preference</option>
+              <option value="rule">House rule</option>
+            </select>
+            <button class="btn primary" type="submit">Add</button>
+          </form>
+          <div id="memoryList" class="pad"><p class="empty">Nothing yet.</p></div>
+          <div class="pad"><h3>Possible routines</h3><p class="muted">Based on repeated requests, not confirmed preferences. Nothing runs automatically. Dismiss patterns that do not fit.</p><div id="patternList"></div></div>
+        </div>
+
+        <div class="card">
+          <h2>Safety</h2>
+          <p class="muted">These bound every action, whoever asked for it — a spoken command, a protocol, or you.</p>
+          <div class="field-grid">
+            <label>Vacancy threshold <small>minutes of no motion</small>
+              <input type="number" id="vacancyMinutes" min="1" max="240" />
+            </label>
+            <label>Per-entity cooldown <small>seconds before re-acting</small>
+              <input type="number" id="cooldownSec" min="0" max="7200" />
+            </label>
+            <label>Respect manual changes for <small>seconds after you touch something</small>
+              <input type="number" id="respectManualOverrideSec" min="0" max="86400" />
+            </label>
+          </div>
+          <div class="switch-row">
+            <label class="switch"><input type="checkbox" id="dryRun" /><span></span> Dry run — decide but never call Home Assistant</label>
+            <label class="switch"><input type="checkbox" id="enforceOccupancyEnvelope" /><span></span> Enforce occupancy rules in code <small>(recheck every unattended action against the computed room verdict — turn this off and the model's judgement is final)</small></label>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Domains the agent may control</h2>
+          <p class="muted">Sensitive domains can be selected, but only a live owner request can use them. Spoken security and environmental commands must include the Carvis wake word.</p>
+          <div class="chips" id="domainChips"></div>
+        </div>
+
+        <div class="card">
+          <h2>Room notes</h2>
+          <p class="muted">Optional context per room, e.g. "the desk lamp is on a smart plug the cat knocks over".</p>
+          <div id="areaNotes" class="field-grid"></div>
+        </div>
+
+      </section>
+
+      <!-- ── Settings ──────────────────────────────────────────── -->
+      <section class="view" id="view-settings">
+        <header class="topbar">
+          <div>
+            <h1>Settings</h1>
+            <p class="sub" id="configPath"></p>
+          </div>
+          <div class="topbar-actions">
+            <button class="btn primary" id="saveSettingsBtn">Save</button>
+          </div>
+        </header>
+
+        <form class="card settings-card-form" novalidate>
+          <h2>Home Assistant</h2>
+          <div class="field-grid">
+            <label>Base URL
+              <input type="text" id="haUrl" placeholder="https://home-assistant.example" />
+            </label>
+            <label>Long-lived access token
+              <input type="password" id="haToken" placeholder="leave blank to keep the saved token" autocomplete="off" />
+            </label>
+          </div>
+          <label class="switch"><input type="checkbox" id="allowInsecureTls" /><span></span> Accept self-signed certificates <small>(needed only for a raw IP + HTTPS; restart after changing)</small></label>
+          <div class="row-actions">
+            <button class="btn" id="testHaBtn" type="button">Test connection</button>
+            <button class="btn ghost" id="reconnectBtn" type="button">Reconnect</button>
+            <span id="haTestResult" class="muted"></span>
+          </div>
+          <p class="muted">
+            Make a token in Home Assistant → click your profile (bottom left) → <em>Security</em> tab → <em>Long-lived access tokens</em> → Create.
+          </p>
+        </form>
+
+        <div class="card">
+          <h2>Local models</h2>
+          <p class="muted">Which model does what now lives in <strong>Models</strong>. These are the shared knobs for anything running on Ollama.</p>
+          <div class="field-grid">
+            <label>Ollama URL
+              <input type="text" id="ollamaUrl" placeholder="http://localhost:11434" />
+            </label>
+            <label>Temperature <small>lower = more predictable</small>
+              <input type="number" id="temperature" min="0" max="2" step="0.05" />
+            </label>
+            <label>Context window <small>num_ctx tokens</small>
+              <input type="number" id="numCtx" min="1024" max="131072" step="1024" />
+            </label>
+            <label>Request timeout <small>seconds</small>
+              <input type="number" id="timeoutSec" min="10" max="900" />
+            </label>
+            <label>Keep model loaded <small>ollama keep_alive</small>
+              <input type="text" id="keepAlive" placeholder="30m" />
+            </label>
+          </div>
+        </div>
+
+        <form class="card settings-card-form" novalidate>
+          <h2>Voice &amp; glasses</h2>
+          <div class="switch-row">
+            <label class="switch"><input type="checkbox" id="voiceEnabled" /><span></span> Listen to the glasses</label>
+            <label class="switch"><input type="checkbox" id="requireWakeWord" /><span></span> Only act after a wake word <small>(off means Carvis also files project talk it overhears)</small></label>
+            <label class="switch"><input type="checkbox" id="glassesProactive" /><span></span> Let Carvis speak first <small>(briefings, finished prints, arrivals)</small></label>
+            <label class="switch"><input type="checkbox" id="autoSpeakReplies" /><span></span> Speak Carvis replies <small>through the physical core or selected speaker</small></label>
+          </div>
+          <div class="field-grid">
+            <label>Wake words <small>comma separated</small>
+              <input type="text" id="wakeWords" placeholder="carvis, jarvis" />
+            </label>
+            <label>Carvis output speaker <small>all spoken replies use this one speaker</small>
+              <select id="speechMediaPlayer" aria-label="Carvis output speaker"></select>
+            </label>
+            <label>Voice output priority
+              <select id="speechOutputMode">
+                <option value="physical_then_ha">Physical Carvis, then selected speaker</option>
+                <option value="physical_only">Physical Carvis only</option>
+                <option value="phone_only">iPhone (enable audio in the Carvis phone screen)</option><option value="ha_only">Selected Home Assistant speaker only</option>
+              </select>
+            </label>
+            <label>Glasses token <small>required if not bound to 127.0.0.1</small>
+              <input type="password" id="glassesToken" placeholder="leave blank to keep the saved token" autocomplete="off" />
+            </label>
+            <label>Quiet gap between unprompted messages <small>seconds</small>
+              <input type="number" id="proactiveMinGapSec" min="0" max="3600" />
+            </label>
+          </div>
+          <p class="muted">A connected physical Carvis core takes priority when chosen. Choosing a speaker makes that media player available to Carvis for voice output. It does not change your other entity selections.</p>
+        </form>
+
+        <form class="card settings-card-form" novalidate>
+          <h2>Speech to text</h2>
+          <p class="muted">
+            Transcribes what the glasses hear. Costs money per utterance and the audio leaves this
+            Mac — muting the glasses stops capture at the source, so nothing is sent while muted.
+            Deepgram and AssemblyAI can both have a key saved at once, so switching the engine below
+            is instant — useful for comparing the two on the same real speech.
+          </p>
+          <div class="field-grid">
+            <label>Engine
+              <select id="sttEngine">
+                <option value="deepgram">Deepgram (nova-3)</option>
+                <option value="assemblyai">AssemblyAI (Universal-3.5 Pro)</option>
+              </select>
+            </label>
+            <label>Model <small>filled in per engine, pick a different tier if you want</small>
+              <select id="sttModel"></select>
+            </label>
+            <label>Deepgram API key
+              <input type="password" id="deepgramKey" placeholder="leave blank to keep the saved key" autocomplete="off" />
+            </label>
+            <label>AssemblyAI API key
+              <input type="password" id="assemblyaiKey" placeholder="leave blank to keep the saved key" autocomplete="off" />
+            </label>
+          </div>
+          <p class="muted">
+            Deepgram: <code>deepgram.com</code> → Console → API Keys. AssemblyAI:
+            <code>assemblyai.com</code> → dashboard → API Keys.
+          </p>
+        </form>
+
+        <form class="card settings-card-form" novalidate>
+          <h2>Web search</h2>
+          <p class="muted">
+            Lets Carvis look things up on the live web — news, prices, anything time-sensitive
+            or outside what a model already knows — via Gemini's Google Search grounding.
+          </p>
+          <div class="field-grid">
+            <label>Gemini API key
+              <input type="password" id="geminiKey" placeholder="leave blank to keep the saved key" autocomplete="off" />
+            </label>
+            <label>Model
+              <select id="searchModel"></select>
+            </label>
+          </div>
+          <p class="muted">Get a key at <code>aistudio.google.com</code> → Get API key.</p>
+        </form>
+
+        <div class="card">
+          <h2>Project Atlas</h2>
+          <div class="switch-row">
+            <label class="switch"><input type="checkbox" id="atlasEnabled" /><span></span> Connect to Atlas</label>
+            <label class="switch"><input type="checkbox" id="captureOverheard" /><span></span> File overheard project talk as captures</label>
+            <label class="switch"><input type="checkbox" id="completeTasks" /><span></span> Let Carvis close tasks you say you finished</label>
+          </div>
+          <div class="field-grid">
+            <label>Addresses <small>tried in order, one per line — whichever answers first is used</small>
+              <textarea id="atlasEndpoints" rows="3" spellcheck="false" placeholder="https://atlas.example"></textarea>
+            </label>
+          </div>
+          <div class="row-actions">
+            <button class="btn" id="testAtlasBtn">Test connection</button>
+            <span id="atlasTestResult" class="muted"></span>
+          </div>
+          <p class="muted" id="atlasActiveNote"></p>
+          <p class="muted">
+            Reads work unauthenticated once one of these answers. Writing needs a token, which Carvis reads from
+            the macOS Keychain — store one with <code>atlas token set</code>. It is never copied into config.json.
+            Atlas is a home-network box; add a Tailscale address here once it has one, or it will only answer
+            while this Mac is on the home network or the SSH tunnel is up.
+          </p>
+        </div>
+
+        <form class="card settings-card-form" novalidate>
+          <h2>The Mac</h2>
+          <p class="muted">
+            Carvis does not operate the Mac. It sends one command and your Mac agent carries it out.
+          </p>
+          <div class="switch-row">
+            <label class="switch"><input type="checkbox" id="macEnabled" /><span></span> Send commands to the Mac agent</label>
+          </div>
+          <div class="field-grid">
+            <label>Delivery
+              <select id="macDeliver">
+                <option value="queue">Queue — your agent polls /integrations/assistant-engine/api/mac/pending</option>
+                <option value="push">Push — Carvis POSTs to a URL</option>
+                <option value="both">Both</option>
+              </select>
+            </label>
+            <label>Push URL <small>only used for push</small>
+              <input type="text" id="macPushUrl" placeholder="http://127.0.0.1:8899/intent" />
+            </label>
+            <label>Push token <small>sent as a bearer token</small>
+              <input type="password" id="macPushToken" placeholder="leave blank to keep the saved token" autocomplete="off" />
+            </label>
+          </div>
+        </form>
+      </section>
+      </main>
+    </div>
+
+    <div class="modal" id="modal" hidden>
+      <div class="modal-box">
+        <div class="card-head">
+          <h2 id="modalTitle">Prompt preview</h2>
+          <button class="btn tiny ghost" id="modalClose">Close</button>
+        </div>
+        <pre id="modalBody"></pre>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <div class="confirm-banner" id="confirmBanner" hidden>
+      <div class="confirm-banner-bar"><div class="confirm-banner-fill" id="confirmBar"></div></div>
+      <div class="confirm-banner-body">
+        <span class="confirm-banner-prompt" id="confirmPrompt"></span>
+        <div class="confirm-banner-acts">
+          <button class="btn tiny ghost" id="confirmDecline">Decline</button>
+          <button class="btn tiny primary" id="confirmAccept">Accept</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/integrations/assistant-engine/app.js" type="module"></script>
+  </body>
+</html>

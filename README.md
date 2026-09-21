@@ -20,8 +20,8 @@ No API keys, home configuration, transcripts, personal memories, or device crede
 ## Make it yours
 
 - **Chat:** separate conversations, real streamed responses, recent conversational context, and visible integration activity.
-- **Memory:** add and remove facts or preferences yourself in Settings. Nothing is silently learned into long-term memory.
-- **Integrations:** connect a service, configure its permissions, test it, and explicitly enable it. Disabled integrations supply no model tools.
+- **Memory:** manage saved context in Settings; optionally enable Memory & patterns for learned preferences, owner rules, and pattern recognition.
+- **Integrations:** find a service or setting, configure its permissions, save, test, and explicitly enable it. Disabled integrations supply no model tools.
 - **Personality:** choose your name, your assistant's name, and how it should speak.
 
 ## Included integrations
@@ -31,12 +31,25 @@ No API keys, home configuration, transcripts, personal memories, or device crede
 | Home Assistant | Selected entity state and typed device controls; per-device guards and dry run | [Guide](docs/integrations-home-assistant.md) |
 | Apple TV AI | Visual TV tasks, direct buttons through the AI controller, progress, cancellation, and mid-task guidance | [Guide](docs/integrations-apple-tv.md) |
 | Even Realities | Optional glasses companion, replies, interactive widgets, and opt-in microphone input | [Guide](docs/integrations-even-realities.md) |
+| Assistant engine | Fast commands, model roles, coordinated tools, and detailed execution traces | [Guide](docs/integrations-assistant.md) |
+| Voice conversation | Deepgram/AssemblyAI transcription, contextual follow-ups, and live voice | [Guide](docs/integrations-assistant.md#voice-and-display) |
+| Speech output | Phone, configured HA speaker, and physical-device speech routing | [Guide](docs/integrations-assistant.md#voice-and-display) |
+| Protocols, timers & alarms | Persisted routines, conditions, timers, alarms, variables, and run history | [Guide](docs/integrations-assistant.md#intelligence-and-routines) |
+| Proactivity & sessions | Event classification, interruption preferences, and session context | [Guide](docs/integrations-assistant.md#intelligence-and-routines) |
+| Memory & patterns | Facts, preferences, owner rules, recall, and tentative patterns | [Guide](docs/integrations-assistant.md#intelligence-and-routines) |
+| Cameras & images | Objective-driven camera/image interpretation with room context | [Guide](docs/integrations-assistant.md#home-and-connected-services) |
+| Web search | Grounded current-information retrieval | [Guide](docs/integrations-assistant.md#home-and-connected-services) |
+| Project Atlas | Project context, captures, tasks, and existing review workflows | [Guide](docs/integrations-assistant.md#home-and-connected-services) |
+| Desktop bridge | Desktop agent queue/push delivery and acknowledgements | [Guide](docs/integrations-assistant.md#home-and-connected-services) |
+| Physical Carvis | Scoped device pairing, dock status, speech commands, and acknowledgements | [Guide](docs/integrations-assistant.md#voice-and-display) |
+
+The catalog groups all 14 integrations under **Home & devices**, **Voice & display**, **Intelligence & routines**, and **Connected services**. Search by name or setting. For TV silence, open **Apple TV AI → Configure → Reply behavior**; both reply switches default to on. [Find every control](docs/integrations-assistant.md#find-settings).
 
 Apple TV AI connects to an existing compatible controller installed as a Home Assistant add-on. This repository does not install that external controller or bundle its model/service credentials.
 
 ## Private by installation
 
-Carvis binds to `127.0.0.1` by default. Your account, settings, conversations, memory, and integration state live in `.carvis/`, outside source control. Configuration and data are encrypted with a local installation key. The key is stored alongside the data with owner-only file permissions; this protects accidental file exposure, not a compromised operating-system account. Back up the entire data directory including `.key`.
+Carvis binds to `127.0.0.1` by default. Your account, settings, conversations, memory, and integration state live in `.carvis/`, outside source control. Core configuration and data are encrypted with a local installation key. The optional assistant runtime also stores its working configuration, SQLite database, history, and logs in an owner-only `assistant-runtime` subdirectory. Its configuration contains working credentials and is not encrypted while in use. Back up the entire private data directory including `.key`; keep it outside cloud-synced source folders. These controls protect accidental exposure, not a compromised operating-system account.
 
 Model requests are sent to the provider you configure. Enabled integrations may send task data to their configured services. Carvis does not include analytics or a hosted account service. Password fields are never returned by the settings API.
 
@@ -46,6 +59,7 @@ Model requests are sent to the provider you configure. Enabled integrations may 
 | --- | --- | --- |
 | `PORT` | `8788` | Web server port |
 | `HOST` | `127.0.0.1` | Listening interface |
+| `CARVIS_LISTEN_HOSTS` | `HOST` | Optional comma-separated explicit interfaces, e.g. loopback plus a private-network address |
 | `CARVIS_SECURE_COOKIES` | unset | Set to `1` behind an HTTPS reverse proxy |
 | `CARVIS_DATA_DIR` | `.carvis` in the project | Private installation data |
 | `CARVIS_ALLOWED_HOSTS` | additional comma-separated hostnames | Explicit addresses permitted by the web server |
@@ -66,8 +80,10 @@ npm test
 npm run check
 ```
 
-The root server has no runtime npm dependencies. Tests isolate data in temporary directories and mock external services. The glasses companion has a separate package and build instructions in its guide. CI checks the core, release hygiene, and companion build.
+The base chatbot uses Node's built-in libraries. The optional assistant runtime is an npm workspace and installs its image/model dependencies with the root `npm install`. It runs in a child process with a private authenticated loopback connection and starts only when its Integration is enabled. Tests use temporary data and mock service boundaries. The glasses companion has a separate package and build instructions in its guide. CI checks the core, extracted runtime, release hygiene, and companion build.
 
-## Release scope
+## Existing installations
 
-The public edition starts fresh. It does not migrate a configured legacy Carvis installation or run its home automations, desktop agents, or stored protocols. Those future capabilities can be implemented as integrations. Existing installations can keep running independently on their original port and data directory.
+The offline [migration tool](docs/feature-parity.md#migration-implementation-and-verified-scope) imports an existing installation into a separate private directory, including its account, model configuration, selected devices, guards, protocols, timers, memories, and recent conversation. It does not start services or modify the original. Preview with `CARVIS_RUNTIME_PAUSED=1`; stop the old scheduler before starting the replacement normally so protocols cannot run twice. Keep the original installation and a consistent database backup until the new service and your physical clients have been verified.
+
+TV navigation silence and short playback replies are options in Apple TV AI, rather than fixed assistant-wide rules. Other behavior and credentials live under the Integration that owns them. New trusted Integrations contribute tools/context to both standalone chat and the optional assistant engine through the registry.

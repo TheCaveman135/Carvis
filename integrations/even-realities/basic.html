@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <title>Carvis · Glasses</title>
+    <link rel="stylesheet" href="/basic/style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="wordmark">
+          <span class="logo">c</span> carvis<span class="tag">GLASSES</span>
+        </div>
+        <span id="status" role="status">Not connected</span>
+      </header>
+      <section class="hero">
+        <p class="eyebrow">A LITTLE CLOSER</p>
+        <h1>In view.<br />Out of your way.</h1>
+        <p>Your companion, on your glasses.</p>
+      </section>
+      <section class="card">
+        <div class="section-top">
+          <h2>Your display</h2>
+          <button id="clear" class="quiet">Clear screen</button>
+        </div>
+        <div id="preview" aria-label="Glasses display preview">
+          <div id="widgets"></div>
+          <div id="caption"></div>
+        </div>
+        <p class="hint">
+          Swipe to select · tap to use · double-tap to deselect
+        </p>
+        <div class="voice">
+          <button id="mic" disabled>Start microphone</button
+          ><span id="voice-hint">Connect to see voice availability.</span>
+        </div>
+      </section>
+      <section id="approval" class="card" hidden>
+        <h2>Confirm action</h2>
+        <p id="approval-text"></p>
+        <button id="approve">Allow once</button
+        ><button id="reject" class="quiet">Cancel</button>
+      </section>
+      <section class="card">
+        <h2>Talk to Carvis</h2>
+        <div id="messages" aria-live="polite"></div>
+        <form id="chat">
+          <label class="sr-only" for="message">Message</label
+          ><textarea
+            id="message"
+            rows="2"
+            placeholder="Ask anything, or create a widget…"
+            required
+            maxlength="12000"
+          ></textarea
+          ><button id="send" type="submit">Send message <span>↗</span></button>
+        </form>
+      </section>
+      <details class="card" id="connection" open>
+        <summary>Connection settings</summary>
+        <form id="connect">
+          <label for="url">Your Carvis URL</label
+          ><input
+            id="url"
+            type="url"
+            placeholder="https://your-carvis.example"
+            required
+            autocomplete="url"
+          /><label for="token">Device pairing token</label
+          ><input
+            id="token"
+            type="password"
+            required
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="From Integrations → Even Realities"
+          />
+          <p class="hint">
+            Your token is saved on this device. Speech credentials stay on your
+            server.
+          </p>
+          <button type="submit">Connect</button>
+        </form>
+        <button id="disconnect" class="quiet">
+          Disconnect and forget token
+        </button>
+      </details>
+      <p id="error" class="error" role="alert"></p>
+      <footer>Expand your world, one integration at a time.</footer>
+    </main>
+    <script type="module" src="/basic/main.ts"></script>
+  </body>
+</html>

@@ -17,6 +17,7 @@ const state = {
   navVersion: 0,
 };
 const paths = {
+  search: "M21 21l-6-6M17 10a7 7 0 1 0-14 0 7 7 0 0 0 14 0Z",
   plus: "M12 5v14M5 12h14",
   chat: "M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z",
   grid: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
@@ -212,6 +213,7 @@ function formNotice(container, message, success = false) {
   );
 }
 function openModal(title, description, body) {
+  modal.classList.remove("integration-settings-modal");
   if (modal.open) modal.close();
   modal.replaceChildren(
     el(
@@ -961,6 +963,8 @@ function renderMessages(forceScroll = false) {
         }
         continue;
       }
+      const silent = message.role === "assistant" && message.silent && !message.content;
+      if (silent && !message.tools?.length) continue;
       const content = el(
         "div",
         { class: "message-body" },
@@ -978,7 +982,7 @@ function renderMessages(forceScroll = false) {
         ),
       );
       if (message.content) content.append(formattedText(message.content));
-      else if (state.sending && message.id === state.streamingId)
+      else if (!silent && state.sending && message.id === state.streamingId)
         content.append(
           el(
             "div",
@@ -1027,7 +1031,7 @@ function renderMessages(forceScroll = false) {
       list.append(
         el(
           "article",
-          { class: `message ${message.role}` },
+          { class: `message ${message.role}${silent ? " silent-result" : ""}` },
           el(
             "div",
             { class: "message-avatar", "aria-hidden": true },
@@ -1344,369 +1348,245 @@ function integrationIcon(id) {
         ? "tv"
         : "plug";
 }
+const integrationCategories = [
+  { id: "home-devices", name: "Home & devices", description: "Give Carvis a clear, permission-based connection to your physical world.", icon: "home" },
+  { id: "voice-display", name: "Voice & display", description: "Choose how you talk to Carvis and where its replies appear.", icon: "glasses" },
+  { id: "intelligence-routines", name: "Intelligence & routines", description: "Add useful context, reasoning, and routines when you need them.", icon: "spark" },
+  { id: "connected-services", name: "Connected services", description: "Bring your other tools and services into the conversation.", icon: "plug" },
+];
+function integrationCategory(integration) {
+  const supplied = String(integration.category?.id || integration.category || "").toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const aliases = { "home-and-devices": "home-devices", home: "home-devices", devices: "home-devices", "voice-and-display": "voice-display", voice: "voice-display", display: "voice-display", "intelligence-and-routines": "intelligence-routines", intelligence: "intelligence-routines", routines: "intelligence-routines", services: "connected-services" };
+  const mapped = aliases[supplied] || supplied;
+  if (integrationCategories.some(category => category.id === mapped)) return mapped;
+  if (["home-assistant", "apple-tv"].includes(integration.id)) return "home-devices";
+  if (integration.id === "even-realities") return "voice-display";
+  return "connected-services";
+}
+function integrationDependencies(integration, key = "dependsOn") {
+  return (Array.isArray(integration[key]) ? integration[key] : []).map(value => {
+    const id = typeof value === "string" ? value : value?.id;
+    const dependency = (state.data.integrations || []).find(item => item.id === id);
+    return { id, name: dependency?.name || value?.label || id || "Unknown integration", enabled: Boolean(dependency?.enabled), optional: Boolean(value?.optional), integration: dependency };
+  });
+}
+function integrationWorkspaceUrl(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const url = new URL(value, window.location.origin);
+    if (url.origin !== window.location.origin || !["http:", "https:"].includes(url.protocol) || url.username || url.password) return null;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch { return null; }
+}
+function integrationStatus(integration) {
+  if (!integration.enabled) return { label: "Disabled", tone: "off" };
+  if (integrationDependencies(integration).some(item => !item.optional && !item.enabled)) return { label: "Enabled · dependency needed", tone: "attention" };
+  const status = typeof integration.status === "object" ? integration.status?.state || integration.status?.status : integration.status;
+  if (["error", "failed", "unavailable", "needs attention"].includes(status)) return { label: "Enabled · needs attention", tone: "attention" };
+  if (integration.configured === false) return { label: "Enabled · setup needed", tone: "attention" };
+  return { label: "Enabled", tone: "on" };
+}
+function integrationWorkspaceMissing(integration) {
+  return [...new Map([...integrationDependencies(integration), ...integrationDependencies(integration, "workspaceDependsOn")]
+    .filter(item => !item.optional && !item.enabled).map(item => [item.id, item])).values()];
+}
+function integrationMatchesSearch(integration, query) {
+  const category = integrationCategories.find(group => group.id === integrationCategory(integration));
+  const fields = (integration.fields || []).flatMap(field => [field.label, field.description, field.help, typeof field.group === "string" ? field.group : field.group?.label, String(field.key || "").replace(/([a-z])([A-Z])/g, "$1 $2").replaceAll("__", " ")]);
+  const text = [integration.name, integration.description, category?.name, ...fields].filter(Boolean).join(" ").toLowerCase();
+  return String(query).trim().toLowerCase().split(/\s+/).every(word => text.includes(word));
+}
+function integrationWorkspaceLink(integration, className = "button compact quiet") {
+  const url = integrationWorkspaceUrl(integration.workspaceUrl);
+  if (!url || !integration.enabled) return null;
+  const missing = integrationWorkspaceMissing(integration);
+  if (missing.length) return el("p", { class: "workspace-unavailable" }, icon("info"), `Enable ${missing.map(item => item.name).join(", ")} to open this workspace.`);
+  return el("a", { class: className, href: url, target: "_blank", rel: "noopener", "aria-label": `Open ${integration.name} workspace in a new tab` }, "Open workspace", icon("arrow"));
+}
+function integrationCard(integration) {
+  const status = integrationStatus(integration), dependencies = integrationDependencies(integration);
+  return el("article", { class: "integration-card", "data-integration": integration.id },
+    el("div", { class: "integration-top" }, el("div", { class: "integration-icon" }, icon(paths[integration.icon] ? integration.icon : integrationIcon(integration.id))),
+      el("div", { class: `integration-status ${status.tone}` }, el("span", { class: `status-dot${status.tone === "off" ? " off" : status.tone === "attention" ? " attention" : ""}` }), status.label)),
+    el("h3", {}, integration.name), el("p", {}, integration.description),
+    dependencies.length ? el("div", { class: "card-dependencies" }, dependencies.map(item => el("span", { class: !item.enabled && !item.optional ? "dependency-missing" : "" }, `${item.optional ? "Works with" : "Requires"} ${item.name}${!item.enabled ? " · disabled" : ""}`))) : null,
+    el("div", { class: "integration-footer" }, el("span", { class: "version" }, `v${integration.version || "1.0.0"}`), button(integration.configured ? "Configure" : "Set up", () => configureIntegration(integration), "compact", "settings")),
+    integrationWorkspaceLink(integration, "integration-workspace-link"));
+}
 function renderIntegrations(main) {
-  const integrations = state.data.integrations || [];
-  const connected = integrations.filter((i) => i.enabled).length;
-  const cards = integrations.map((integration) =>
-    el(
-      "article",
-      { class: "integration-card" },
-      el(
-        "div",
-        { class: "integration-top" },
-        el(
-          "div",
-          { class: "integration-icon" },
-          icon(integrationIcon(integration.id)),
-        ),
-        el(
-          "div",
-          { class: "integration-status" },
-          el("span", {
-            class: `status-dot${integration.enabled && integration.configured ? "" : " off"}`,
-          }),
-          integration.enabled
-            ? integration.configured
-              ? "Enabled"
-              : "Setup needed"
-            : "Not enabled",
-        ),
-      ),
-      el("h2", {}, integration.name),
-      el("p", {}, integration.description),
-      el(
-        "div",
-        { class: "integration-footer" },
-        el("span", { class: "version" }, `v${integration.version || "1.0.0"}`),
-        button(
-          integration.configured ? "Configure" : "Set up",
-          () => configureIntegration(integration),
-          "compact",
-          "arrow",
-        ),
-      ),
-    ),
-  );
-  main.replaceChildren(
-    el(
-      "section",
-      { class: "page" },
-      pageHeading(
-        "MAKE IT YOURS",
-        "More possibilities. Your choice.",
-        "Give Carvis new abilities with integrations. Connect the things you use, choose what it can access, and keep everything else simple.",
-      ),
-      el(
-        "div",
-        { class: "subheading" },
-        "Available integrations",
-        el(
-          "span",
-          { class: "count-label" },
-          `${connected} enabled · ${integrations.length} available`,
-        ),
-      ),
-      integrations.length
-        ? el("div", { class: "integration-grid" }, cards)
-        : el(
-            "div",
-            { class: "empty-card" },
-            "No integrations are installed yet.",
-          ),
-      el(
-        "div",
-        { class: "integration-banner" },
-        icon("shield"),
-        el(
-          "div",
-          {},
-          el("h3", {}, "A capable assistant. Clear boundaries."),
-          el(
-            "p",
-            {},
-            "Integrations start disabled. You choose the connections, visible devices, and actions that need your confirmation.",
-          ),
-        ),
-      ),
-      el(
-        "details",
-        { class: "integration-help" },
-        el("summary", {}, "How does Carvis grow?"),
-        el(
-          "p",
-          {},
-          "New abilities arrive through integrations. Each integration describes its settings and permissions, while your conversations, personality, and memory stay in one place.",
-        ),
-      ),
-    ),
-  );
+  const integrations = state.data.integrations || [], enabled = integrations.filter(item => item.enabled).length;
+  const needsAttention = integrations.filter(item => integrationStatus(item).tone === "attention").length;
+  const search = input("integration-search", state.integrationSearch || "", "search", { placeholder: "Find an integration or setting", "aria-label": "Search integrations and settings" });
+  const groups = el("div", { class: "integration-groups" }), resultCount = el("span", { class: "catalog-result-count", role: "status" });
+  const filterButtons = [];
+  const filterItems = [["all", `All integrations · ${integrations.length}`], ["enabled", `Enabled · ${enabled}`], ["attention", `Needs attention · ${needsAttention}`]];
+  const renderGroups = () => {
+    const query = search.value.trim().toLowerCase(), filter = state.integrationFilter || "all";
+    const matches = integrations.filter(item => {
+      if (filter === "enabled" && !item.enabled) return false;
+      if (filter === "attention" && integrationStatus(item).tone !== "attention") return false;
+      return integrationMatchesSearch(item, query);
+    });
+    groups.replaceChildren();
+    filterButtons.forEach(({ button: control, value }) => { control.classList.toggle("active", value === filter); control.setAttribute("aria-pressed", String(value === filter)); });
+    resultCount.textContent = query || filter !== "all" ? `${matches.length} ${matches.length === 1 ? "integration" : "integrations"}` : "";
+    for (const category of integrationCategories) {
+      const items = matches.filter(item => integrationCategory(item) === category.id);
+      if (!items.length) continue;
+      groups.append(el("section", { class: "integration-category", "aria-labelledby": `category-${category.id}` },
+        el("div", { class: "category-heading" }, el("div", { class: "category-title" }, icon(category.icon), el("h2", { id: `category-${category.id}` }, category.name), el("span", { class: "count-label" }, String(items.length))), el("p", {}, category.description)),
+        el("div", { class: "integration-grid" }, items.map(integrationCard))));
+    }
+    if (!matches.length) groups.append(el("div", { class: "empty-card" }, el("h2", {}, integrations.length ? "No matching integrations" : "A little room to grow"), el("p", {}, integrations.length ? "Try another search or filter." : "Installed integrations will appear here, ready for you to configure."), integrations.length ? button("Reset filters", () => { search.value = ""; state.integrationSearch = ""; state.integrationFilter = "all"; renderGroups(); }, "quiet compact") : null));
+  };
+  const filters = el("div", { class: "catalog-filters", role: "group", "aria-label": "Filter integrations" }, filterItems.map(([value, label]) => {
+    const control = button(label, () => { state.integrationFilter = value; renderGroups(); }, "catalog-filter"); filterButtons.push({ button: control, value }); return control;
+  }));
+  search.addEventListener("input", () => { state.integrationSearch = search.value; renderGroups(); });
+  main.replaceChildren(el("section", { class: "page integrations-page" },
+    pageHeading("MAKE IT YOURS", "More possibilities. Your choice.", "Connect your devices, shape how Carvis responds, and add new abilities. Everything has a place; you choose what to turn on."),
+    el("div", { class: "integration-overview" }, el("div", {}, el("span", { class: "overview-number" }, String(enabled)), el("span", { class: "overview-label" }, "integrations enabled")),
+      el("p", {}, enabled ? "Your enabled integrations add tools and context to Carvis. Their settings and workspaces are always here." : "Start with a conversation. Enable an integration whenever you’re ready for more."), el("span", { class: "overview-total" }, `${integrations.length} available`)),
+    el("div", { class: "catalog-toolbar" }, filters, el("div", { class: "catalog-search" }, icon("search"), search)), resultCount, groups,
+    el("div", { class: "integration-banner" }, icon("shield"), el("div", {}, el("h3", {}, "A capable assistant. Clear boundaries."), el("p", {}, "Integrations start disabled. You choose the connections, visible devices, and actions that need your confirmation."))),
+    el("details", { class: "integration-help" }, el("summary", {}, "How does Carvis grow?"), el("p", {}, "New abilities arrive through integrations. Each has its own settings, permissions, and optional workspace. Your conversations, personality, and memory stay in one place."))));
+  renderGroups();
+}
+function integrationFieldGroup(integration, definition) {
+  const supplied = definition.group;
+  const groupId = value => String(value).replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const names = { carvis: "Assistant behavior", tools: "Tool execution", ollama: "Local models", models: "Model roles", voice: "Conversation", stt: "Speech recognition", liveVoice: "Live voice", speech: "Speech & speakers", classifier: "Proactive decisions", sessions: "Activity sessions", memory: "Memory & patterns", search: "Search provider", atlas: "Project connection", mac: "Desktop connection", physicalCarvis: "Device connection", agent: "Device behavior", glasses: "Display & gestures" };
+  if (supplied && typeof supplied === "object") return { id: groupId(supplied.id || supplied.label || "general"), label: supplied.label || supplied.title || names[supplied.id] || supplied.id || "General", description: supplied.description || supplied.help || definition.groupHelp || "" };
+  if (typeof supplied === "string" && supplied.trim()) return { id: groupId(supplied), label: names[supplied] || supplied.replace(/^./, letter => letter.toUpperCase()), description: definition.groupHelp || "" };
+  const key = definition.key;
+  if (integration.id === "home-assistant") return ["dryRun", "observed", "controlled", "guards"].includes(key) ? { id: "devices", label: "Devices & permissions", description: "Choose what Carvis can see, what it can control, and when it needs to ask." } : { id: "connection", label: "Connection", description: "Use your own Home Assistant address and access token." };
+  if (integration.id === "apple-tv") {
+    if (["silentNavigation", "shortReplies"].includes(key)) return { id: "behavior", label: "Response behavior", description: "Choose how much Carvis says while you control the TV." };
+    if (key === "context") return { id: "context", label: "Context", description: "Give the controller useful preferences and guidance." };
+    return { id: "controller", label: "Controller", description: "Connect your AI TV controller and the selected TV entities." };
+  }
+  if (integration.id === "even-realities") return key.startsWith("speech") || key === "microphoneEnabled" ? { id: "voice", label: "Voice input", description: "Optional speech recognition, using the provider you choose." } : { id: "connection", label: "Connection", description: "Pair the glasses companion with your Carvis server." };
+  if (key.includes("__")) { const id = key.split("__")[0]; return { id, label: id.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[-_]/g, " ").replace(/^./, letter => letter.toUpperCase()), description: "" }; }
+  return { id: "general", label: "General", description: "" };
+}
+function integrationFieldValue(definition, control) {
+  const value = control.value, label = definition.label || definition.key;
+  if (definition.type === "password" && !value) return undefined;
+  if (definition.type === "boolean") return control.checked;
+  if (definition.type === "number") {
+    if (value.trim() === "") return undefined;
+    const number = Number(value), min = definition.min ?? definition.minimum, max = definition.max ?? definition.maximum;
+    if (!Number.isFinite(number) || (min !== undefined && number < min) || (max !== undefined && number > max)) throw new Error(`${label}: enter a number${min !== undefined && max !== undefined ? ` between ${min} and ${max}` : " in the allowed range"}.`);
+    return number;
+  }
+  if (definition.type === "json") {
+    if (!value.trim()) return undefined;
+    try { return JSON.parse(value); } catch { throw new Error(`${label}: enter valid JSON. Use double quotes around property names and text.`); }
+  }
+  if (["string-array", "string_array"].includes(definition.type)) return [...new Set(value.split(/\r?\n/).map(item => item.trim()).filter(Boolean))];
+  if (definition.type === "entities") return [...new Set(value.split(/[\s,]+/).filter(Boolean))];
+  return value;
 }
 function configureIntegration(integration) {
-  const values = {};
-  const cfg = integration.config || {};
-  const feedback = el("div");
-  const enabled = input("enabled", "", "checkbox", {
-    checked: integration.enabled,
-    "aria-label": `Enable ${integration.name}`,
-  });
-  const form = el("form");
-  const permissionText = (integration.permissions || []).map((permission) =>
-    el(
-      "span",
-      { class: "permission" },
-      typeof permission === "string"
-        ? permission
-        : permission.description || permission.name || "Integration access",
-    ),
-  );
-  form.append(
-    el(
-      "div",
-      { class: "switch-row" },
-      el(
-        "div",
-        {},
-        el("strong", {}, "Enable integration"),
-        el("p", {}, "Allow Carvis to use this integration after you save."),
-      ),
-      el("label", { class: "switch" }, enabled),
-    ),
-    el("div", { class: "section-label" }, "ACCESS & ABILITIES"),
-    el(
-      "div",
-      { class: "permission-list" },
-      permissionText.length
-        ? permissionText
-        : el(
-            "span",
-            { class: "muted small" },
-            "No extra permissions declared.",
-          ),
-    ),
-  );
-  let entitySection = null;
-  for (const f of integration.fields || []) {
-    if (
-      integration.id === "home-assistant" &&
-      ["observed", "controlled", "guards"].includes(f.key)
-    )
-      continue;
-    let control;
-    if (f.type === "boolean")
-      control = input(f.key, "", "checkbox", {
-        checked: Boolean(
-          cfg[f.key] ??
-            f.default ??
-            (integration.id === "home-assistant" && f.key === "dryRun"),
-        ),
-      });
-    else if (f.type === "select")
-      control = el(
-        "select",
-        { name: f.key },
-        (f.options || []).map((o) =>
-          el(
-            "option",
-            {
-              value: typeof o === "string" ? o : o.value,
-              selected:
-                String(typeof o === "string" ? o : o.value) ===
-                String(cfg[f.key] ?? f.default),
-            },
-            typeof o === "string" ? o : o.label,
-          ),
-        ),
-      );
-    else if (f.type === "entities")
-      control = el(
-        "textarea",
-        { name: f.key, rows: "3" },
-        Array.isArray(cfg[f.key]) ? cfg[f.key].join("\n") : (cfg[f.key] ?? ""),
-      );
-    else if (f.type === "textarea")
-      control = el(
-        "textarea",
-        { name: f.key, rows: "3" },
-        typeof cfg[f.key] === "object"
-          ? JSON.stringify(cfg[f.key], null, 2)
-          : (cfg[f.key] ?? f.default ?? ""),
-      );
-    else
-      control = input(
-        f.key,
-        f.type === "password" ? "" : (cfg[f.key] ?? f.default ?? ""),
-        f.type === "password" ? "password" : f.type === "url" ? "url" : "text",
-        {
-          autocomplete: f.type === "password" ? "new-password" : "off",
-          placeholder:
-            f.type === "password"
-              ? cfg[`has${f.key[0].toUpperCase()}${f.key.slice(1)}`]
-                ? "Saved · leave blank to keep"
-                : "Enter your secret"
-              : f.placeholder || "",
-        },
-      );
-    if (f.required && f.type !== "password") {
-      control.required = enabled.checked;
-      enabled.addEventListener("change", () => {
-        control.required = enabled.checked;
-      });
+  const values = {}, cfg = integration.config || {}, feedback = el("div"), groups = new Map();
+  const dependencies = integrationDependencies(integration), requiredMissing = dependencies.filter(item => !item.optional && !item.enabled);
+  const enabled = input("enabled", "", "checkbox", { checked: integration.enabled, "aria-label": `Enable ${integration.name}` });
+  const form = el("form", { class: "integration-settings-form", novalidate: true });
+  const permissionText = (integration.permissions || []).map(permission => el("li", {}, icon("check"), typeof permission === "string" ? permission : permission.description || permission.name || "Integration access"));
+  form.append(el("div", { class: "switch-row" }, el("div", {}, el("strong", {}, "Enable integration"), el("p", {}, "Allow Carvis to use this integration after you save.")), el("label", { class: "switch" }, enabled)));
+  if (dependencies.length) form.append(el("div", { class: `integration-dependencies${requiredMissing.length ? " attention" : ""}` }, el("h3", {}, "Works with"), dependencies.map(item => el("div", { class: "dependency-row" }, el("div", {}, el("strong", {}, item.name), el("span", {}, item.optional ? "Optional connection" : "Required integration")), el("span", { class: `dependency-state${!item.enabled ? " off" : ""}` }, item.enabled ? "Enabled" : item.integration ? "Disabled" : "Not installed"))), requiredMissing.length ? el("p", {}, "Set up and enable the required integrations first. You can still save this integration’s settings while it is disabled.") : null));
+  const permissions = el("details", { class: "integration-permissions" }, el("summary", {}, `Access & abilities${permissionText.length ? ` · ${permissionText.length}` : ""}`), permissionText.length ? el("ul", {}, permissionText) : el("p", { class: "small muted" }, "No extra permissions declared."));
+  form.append(permissions);
+  const workspace = integrationWorkspaceLink(integration, "button quiet compact");
+  if (workspace) form.append(el("div", { class: "settings-workspace" }, el("div", {}, el("strong", {}, "Integration workspace"), el("p", {}, "Open its controls and detailed activity in a separate tab.")), workspace));
+  const tabs = el("div", { class: "integration-settings-tabs", role: "tablist", "aria-label": "Settings sections" }), panels = el("div", { class: "integration-settings-panels" });
+  let activeGroup = null;
+  const activate = (id, focus = false) => {
+    activeGroup = id;
+    for (const [key, group] of groups) { const selected = key === id; group.panel.hidden = !selected; group.tab.classList.toggle("active", selected); group.tab.setAttribute("aria-selected", String(selected)); group.tab.tabIndex = selected ? 0 : -1; if (selected && focus) group.tab.focus(); }
+  };
+  const getGroup = definition => {
+    const metadata = integrationFieldGroup(integration, definition);
+    if (!groups.has(metadata.id)) {
+      const index = groups.size, panelId = `integration-settings-panel-${index}`, tabId = `integration-settings-tab-${index}`;
+      const tab = el("button", { type: "button", class: "integration-settings-tab", id: tabId, role: "tab", "aria-controls": panelId, "aria-selected": "false", tabindex: "-1", onclick: () => activate(metadata.id) }, metadata.label);
+      const panel = el("section", { class: "integration-settings-panel", id: panelId, role: "tabpanel", "aria-labelledby": tabId, hidden: true }, el("div", { class: "settings-group-heading" }, el("h3", {}, metadata.label), metadata.description ? el("p", {}, metadata.description) : null));
+      groups.set(metadata.id, { tab, panel, metadata }); tabs.append(tab); panels.append(panel);
     }
-    values[f.key] = { control, field: f };
-    form.append(
-      f.type === "boolean"
-        ? el(
-            "label",
-            { class: "field checkbox" },
-            control,
-            el(
-              "span",
-              {},
-              el("span", { class: "field-label" }, f.label),
-              f.description
-                ? el("span", { class: "field-description" }, f.description)
-                : null,
-            ),
-          )
-        : field(f.label, control, f.description),
-    );
+    return { ...groups.get(metadata.id), id: metadata.id };
+  };
+  tabs.addEventListener("keydown", event => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault(); const ids = [...groups.keys()], current = ids.indexOf(activeGroup);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? ids.length - 1 : (current + (event.key === "ArrowRight" ? 1 : -1) + ids.length) % ids.length;
+    if (ids[next]) activate(ids[next], true);
+  });
+  let entitySection = null;
+  for (const definition of integration.fields || []) {
+    const f = definition;
+    if (integration.id === "home-assistant" && ["observed", "controlled", "guards"].includes(f.key)) continue;
+    const group = getGroup(f), value = cfg[f.key] ?? f.default;
+    let control;
+    if (f.type === "boolean") control = input(f.key, "", "checkbox", { checked: Boolean(value ?? (integration.id === "home-assistant" && f.key === "dryRun")) });
+    else if (f.type === "select") control = el("select", { name: f.key }, (!f.required && value === undefined) ? el("option", { value: "" }, "Choose an option") : null, (f.options || []).map(option => el("option", { value: typeof option === "string" ? option : option.value, selected: String(typeof option === "string" ? option : option.value) === String(value) }, typeof option === "string" ? option : option.label)));
+    else if (["entities", "string-array", "string_array"].includes(f.type)) control = el("textarea", { name: f.key, rows: "4", placeholder: f.placeholder || "One item per line" }, Array.isArray(value) ? value.join("\n") : value ?? "");
+    else if (["textarea", "json"].includes(f.type)) control = el("textarea", { name: f.key, rows: f.type === "json" ? "7" : "4", class: f.type === "json" ? "json-input" : "", spellcheck: f.type === "json" ? "false" : "true", placeholder: f.placeholder || (f.type === "json" ? "[] or {}" : "") }, typeof value === "object" || f.type === "json" && value !== undefined && typeof value !== "string" ? JSON.stringify(value, null, 2) : value ?? "");
+    else control = input(f.key, f.type === "password" ? "" : value ?? "", ["password", "url", "number"].includes(f.type) ? f.type : "text", { autocomplete: f.type === "password" ? "new-password" : "off", min: f.min ?? f.minimum, max: f.max ?? f.maximum, step: f.type === "number" ? f.step ?? "any" : undefined, placeholder: f.type === "password" ? cfg[`has${f.key[0].toUpperCase()}${f.key.slice(1)}`] ? "Saved · leave blank to keep" : "Enter your secret" : f.placeholder || "" });
+    let hasSecret = Boolean(cfg[`has${f.key[0].toUpperCase()}${f.key.slice(1)}`]);
+    const updateRequired = () => { control.required = Boolean(enabled.checked && f.required && (f.type !== "password" || !hasSecret)); };
+    updateRequired(); enabled.addEventListener("change", updateRequired);
+    control.addEventListener("input", () => control.setCustomValidity(""));
+    values[f.key] = { control, field: f, groupId: group.id };
+    const description = [f.description, f.help, ["string-array", "string_array"].includes(f.type) ? "Enter one value per line." : f.type === "json" ? "Use JSON for lists or structured settings. Leave blank to keep the saved value; use [] or {} to clear it." : null].filter((text, index, all) => typeof text === "string" && text && all.indexOf(text) === index).join(" ");
+    group.panel.append(f.type === "boolean" ? el("label", { class: "field checkbox" }, control, el("span", {}, el("span", { class: "field-label" }, f.label || f.key), description ? el("span", { class: "field-description" }, description) : null)) : field(f.label || f.key, control, description));
     if (f.key === "pairingToken" && integration.id === "even-realities") {
       const secretArea = el("div");
-      const generate = button(
-        "Generate pairing token",
-        async () => {
-          generate.disabled = true;
-          try {
-            const result = await api(
-              "/api/integrations/even-realities/generate-secret",
-              { method: "POST", body: { key: "pairingToken" } },
-            );
-            if (!result.value) throw new Error("No token was returned.");
-            control.value = "";
-            control.placeholder = "Saved · leave blank to keep";
-            const token = input("new-pairing-token", result.value, "text", {
-              readonly: true,
-              "aria-label": "New pairing token",
-              autocomplete: "off",
-            });
-            secretArea.replaceChildren(
-              el(
-                "div",
-                { class: "notice" },
-                el(
-                  "p",
-                  {},
-                  "New token saved. Copy it into your glasses app now. Existing pairings will need the new token.",
-                ),
-              ),
-              token,
-              el(
-                "div",
-                { class: "action-row" },
-                button(
-                  "Copy token",
-                  () =>
-                    act(async () => {
-                      await navigator.clipboard.writeText(result.value);
-                      toast("Pairing token copied.");
-                    }),
-                  "compact",
-                  "copy",
-                ),
-              ),
-            );
-            await refreshState();
-          } catch (error) {
-            formNotice(secretArea, errorText(error));
-          } finally {
-            generate.disabled = false;
-          }
-        },
-        "compact",
-        "refresh",
-      );
-      form.append(
-        generate,
-        el(
-          "p",
-          { class: "field-description" },
-          "Creates and saves a new token immediately. It replaces the previous token.",
-        ),
-        secretArea,
-        el("div", { class: "form-divider" }),
-      );
+      const generate = button("Generate pairing token", async () => {
+        generate.disabled = true;
+        try {
+          const result = await api("/api/integrations/even-realities/generate-secret", { method: "POST", body: { key: "pairingToken" } });
+          if (!result.value) throw new Error("No token was returned.");
+          control.value = ""; control.placeholder = "Saved · leave blank to keep"; hasSecret = true; updateRequired();
+          const token = input("new-pairing-token", result.value, "text", { readonly: true, "aria-label": "New pairing token", autocomplete: "off" });
+          secretArea.replaceChildren(el("div", { class: "notice" }, el("p", {}, "New token saved. Copy it into your glasses app now. Existing pairings will need the new token.")), token, el("div", { class: "action-row" }, button("Copy token", () => act(async () => { await navigator.clipboard.writeText(result.value); toast("Pairing token copied."); }), "compact", "copy")));
+          await refreshState();
+        } catch (error) { formNotice(secretArea, errorText(error)); } finally { generate.disabled = false; }
+      }, "compact", "refresh");
+      group.panel.append(generate, el("p", { class: "field-description" }, "Creates and saves a new token immediately. It replaces the previous token."), secretArea);
     }
   }
-  if (integration.id === "home-assistant") {
-    entitySection = makeEntitySelector(cfg);
-    form.append(entitySection.node);
-  }
+  if (integration.id === "home-assistant") { entitySection = makeEntitySelector(cfg); getGroup({ key: "observed" }).panel.append(entitySection.node); }
+  if (groups.size) { form.append(tabs, panels); activate(groups.keys().next().value); }
+  else form.append(el("p", { class: "small muted" }, "This integration has no additional settings."));
   const collectConfig = () => {
     const config = {};
-    for (const [key, { control, field: f }] of Object.entries(values)) {
-      if (f.type === "password" && !control.value) continue;
-      config[key] =
-        f.type === "boolean"
-          ? control.checked
-          : f.type === "entities"
-            ? [...new Set(control.value.split(/[\s,]+/).filter(Boolean))]
-            : control.value;
+    for (const [key, entry] of Object.entries(values)) {
+      const { control, field: definition, groupId } = entry;
+      if (!control.checkValidity()) { activate(groupId); control.reportValidity(); throw new Error(`${definition.label || key}: ${control.validationMessage}`); }
+      try { const value = integrationFieldValue(definition, control); if (value !== undefined) config[key] = value; }
+      catch (error) { control.setCustomValidity(errorText(error)); activate(groupId); control.reportValidity(); throw error; }
     }
     if (entitySection) Object.assign(config, entitySection.value());
     return config;
   };
-  const save = el(
-    "button",
-    { type: "submit", class: "button primary" },
-    "Save changes",
-  );
-  const test = button(
-    "Test saved connection",
-    async () => {
-      test.disabled = true;
-      feedback.replaceChildren();
-      try {
-        const result = await api(
-          `/api/integrations/${encodeURIComponent(integration.id)}/test`,
-          { method: "POST" },
-        );
-        formNotice(
-          feedback,
-          result.message ||
-            result.error ||
-            (result.success ? "Connection successful." : "Could not connect."),
-          result.success,
-        );
-      } catch (error) {
-        formNotice(feedback, errorText(error));
-      } finally {
-        test.disabled = false;
-      }
-    },
-    "",
-    "refresh",
-  );
+  const save = el("button", { type: "submit", class: "button primary" }, "Save changes");
+  const test = button("Test saved connection", async () => {
+    test.disabled = true; feedback.replaceChildren();
+    try { const result = await api(`/api/integrations/${encodeURIComponent(integration.id)}/test`, { method: "POST" }); formNotice(feedback, result.message || result.error || (result.success ? "Connection successful." : "Could not connect."), result.success); }
+    catch (error) { formNotice(feedback, errorText(error)); } finally { test.disabled = false; }
+  }, "", "refresh");
   form.append(feedback, el("div", { class: "modal-footer" }, test, save));
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    save.disabled = true;
-    feedback.replaceChildren();
+  form.addEventListener("submit", async event => {
+    event.preventDefault(); save.disabled = true; feedback.replaceChildren();
     try {
-      await api(`/api/integrations/${encodeURIComponent(integration.id)}`, {
-        method: "PUT",
-        body: { enabled: enabled.checked, config: collectConfig() },
-      });
-      await refreshState();
-      modal.close();
-      await route();
-      toast(`${integration.name} settings saved.`);
-    } catch (error) {
-      formNotice(feedback, errorText(error));
-    } finally {
-      save.disabled = false;
-    }
+      const config = collectConfig();
+      if (enabled.checked && requiredMissing.length) throw new Error(`Enable ${requiredMissing.map(item => item.name).join(", ")} before enabling ${integration.name}.`);
+      await api(`/api/integrations/${encodeURIComponent(integration.id)}`, { method: "PUT", body: { enabled: enabled.checked, config } });
+      await refreshState(); modal.close(); await route(); toast(`${integration.name} settings saved.`);
+    } catch (error) { formNotice(feedback, errorText(error)); } finally { save.disabled = false; }
   });
   openModal(integration.name, integration.description, form);
+  modal.classList.add("integration-settings-modal");
 }
 function makeEntitySelector(config) {
   const observed = new Set(config.observed || []),

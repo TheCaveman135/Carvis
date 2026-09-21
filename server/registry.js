@@ -21,6 +21,31 @@ export class Registry {
       throw Error("Invalid or duplicate integration ID.");
     this.modules.set(module.id, module);
   }
+  async start() {
+    for (const [id, module] of this.modules)
+      if (this.available(id) && module.start)
+        await module.start(this.contextFor(id));
+  }
+  async close() {
+    for (const module of [...this.modules.values()].reverse()) await module.stop?.();
+  }
+  async configurationChanged() {
+    // Hooks also run after disable, so a worker cannot retain revoked access.
+    for (const module of this.modules.values()) await module.configurationChanged?.();
+  }
+  async respond(request) {
+    const handlers = [...this.modules.values()].filter(m => m.respond && this.available(m.id));
+    if (handlers.length > 1) throw Error('Enable only one conversation engine at a time.');
+    return handlers.length ? handlers[0].respond(request, this.contextFor(handlers[0].id, request)) : null;
+  }
+  rawModule(method, path) {
+    return [...this.modules.values()].find(m => this.available(m.id) && m.matchRawRoute?.(method, path));
+  }
+  available(id, seen = new Set()) {
+    if (!this.modules.has(id) || !this.store.config.integrations[id]?.enabled || seen.has(id)) return false;
+    seen.add(id);
+    return (this.modules.get(id)?.dependsOn || []).every(d => d.optional || this.available(typeof d === 'string' ? d : d.id, new Set(seen)));
+  }
   async load(directory) {
     let items;
     try {
@@ -40,6 +65,9 @@ export class Registry {
   getConfig(id) {
     if (!this.store.config.integrations[id]?.enabled)
       throw Error(`${id} is not enabled.`);
+    for (const dependency of this.modules.get(id)?.dependsOn || [])
+      if (!this.store.config.integrations[typeof dependency === 'string' ? dependency : dependency.id]?.enabled)
+        throw Error(`Enable ${typeof dependency === 'string' ? dependency : dependency.id} before using ${id}.`);
     return structuredClone(this.store.config.integrations[id].config || {});
   }
   contextFor(id, { signal } = {}) {
@@ -66,6 +94,7 @@ export class Registry {
   list() {
     return [...this.modules.values()].map((m) => {
       const entry = this.store.config.integrations[m.id] || {};
+      const missingDependency = (m.dependsOn || []).find(d => !d.optional && !this.store.config.integrations[typeof d === 'string' ? d : d.id]?.enabled);
       const configured =
         !!entry.config &&
         (m.fields || [])
@@ -83,12 +112,16 @@ export class Registry {
         description: m.description,
         version: m.version,
         icon: m.icon,
+        category: m.category,
+        dependsOn: m.dependsOn || [],
+        workspaceUrl: m.workspaceUrl,
+        workspaceDependsOn: m.workspaceDependsOn,
         permissions: m.permissions || [],
         fields: m.fields || [],
         enabled: !!entry.enabled,
         configured,
         status:
-          this.health.get(m.id) ||
+          (entry.enabled && missingDependency ? 'dependency disabled' : this.health.get(m.id)) ||
           (!entry.enabled ? "disabled" : configured ? "ready" : "needs setup"),
         config: this.safeConfig(m.id),
       };
@@ -115,6 +148,11 @@ export class Registry {
     const enabled = patch.enabled ?? old.enabled;
     if (typeof enabled !== "boolean")
       throw Error("Enabled must be true or false.");
+    if (enabled) for (const dependency of m.dependsOn || []) {
+      const key = typeof dependency === 'string' ? dependency : dependency.id;
+      if (!dependency.optional && !this.store.config.integrations[key]?.enabled)
+        throw Error(`Enable ${this.modules.get(key)?.name || key} first.`);
+    }
     if (enabled) next = await m.validateConfig(next);
     this.store.config.integrations[id] = { enabled, config: next };
     this.store.saveConfig();
@@ -128,6 +166,7 @@ export class Registry {
             "Integration settings changed before confirmation; the action was not executed.",
         });
       }
+    await this.configurationChanged();
     return this.list().find((i) => i.id === id);
   }
   async test(id) {
@@ -154,9 +193,11 @@ export class Registry {
     const result = [];
     for (const [id, m] of this.modules) {
       options.signal?.throwIfAborted();
-      if (!this.store.config.integrations[id]?.enabled) continue;
-      for (const tool of (await m.tools?.(this.contextFor(id, options))) ||
-        []) {
+      if (!this.available(id)) continue;
+      let provided;
+      try { provided = (await m.tools?.(this.contextFor(id, options))) || []; }
+      catch { options.signal?.throwIfAborted(); this.health.set(id, 'tool catalog unavailable'); continue; }
+      for (const tool of provided) {
         if (
           !/^[a-zA-Z][\w-]{0,63}$/.test(tool.name) ||
           result.some((t) => t.name === tool.name)
@@ -172,7 +213,7 @@ export class Registry {
       options.signal?.throwIfAborted();
       const entry = this.store.config.integrations[id];
       if (!m.sanitize) continue;
-      const ctx = entry?.enabled
+      const ctx = this.available(id)
         ? this.contextFor(id, options)
         : { ...this.contextForTest(id, options), config: {}, enabled: false };
       value = await m.sanitize(value, ctx);
@@ -189,7 +230,7 @@ export class Registry {
     const parts = [];
     for (const [id, m] of this.modules) {
       options.signal?.throwIfAborted();
-      if (!this.store.config.integrations[id]?.enabled) continue;
+      if (!this.available(id)) continue;
       try {
         const context = await m.context?.(this.contextFor(id, options));
         if (context) parts.push(`${m.name}:\n${context}`);
@@ -246,6 +287,9 @@ export class Registry {
     return result;
   }
   async confirm(id, accepted, options = {}) {
+    for (const [key, module] of this.modules)
+      if (this.store.config.integrations[key]?.enabled && module.hasConfirmation?.(id))
+        return module.confirm(id, accepted, options);
     const pending = this.pending.get(id);
     if (options.source === "device" && pending?.source !== "device")
       throw Error("This confirmation belongs to the owner chat.");
@@ -281,6 +325,11 @@ export class Registry {
     }
   }
   async recordConfirmation(pending, decision, result) {
+    for (const [id, module] of this.modules) {
+      if (!this.store.config.integrations[id]?.enabled || !module.confirmationResolved) continue;
+      try { await module.confirmationResolved(pending, decision, result); }
+      catch { this.health.set(id, 'confirmation notification failed'); }
+    }
     if (!pending.conversationId) return;
     // A conversation may have been deleted while an external action was in flight.
     try {

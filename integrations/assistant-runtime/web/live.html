@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Talk to Carvis</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#101316;color:#e9eef0}body{max-width:680px;margin:auto;padding:32px 24px}a{color:#b8d7ce}h1{font-size:36px;margin:40px 0 12px}p{line-height:1.6;color:#b6c1c6}button{font:inherit;padding:14px 22px;border-radius:24px;border:1px solid #405550;background:#c8e6dc;color:#12251e;cursor:pointer}button:disabled{opacity:.45;cursor:default}#end{background:transparent;color:#e9eef0}#transcript{white-space:pre-wrap;line-height:1.65;min-height:150px;margin-top:32px;border-top:1px solid #34403e;padding-top:22px}audio{width:100%;margin-top:20px}.note{font-size:13px}#status{min-height:50px}nav{display:flex;gap:12px;flex-wrap:wrap}
+[hidden]{display:none!important}#login{border:1px solid #405550;border-radius:16px;padding:20px;margin:24px 0}h2{margin-top:0}label{display:block;margin:14px 0 6px}input{box-sizing:border-box;width:100%;font:inherit;padding:12px;background:#18201f;color:inherit;border:1px solid #60716c;border-radius:8px}#signIn{margin-top:20px}#loginError{color:#ffb8ab}
+</style></head><body>
+<a href="/">← Back to Carvis</a><h1>Talk to Carvis</h1>
+<a href="/integrations/assistant-engine/live.html" id="secureLink">Open private HTTPS voice page</a>
+<p class="note">On the Mac running Carvis: <a href="/integrations/assistant-engine/live.html">open local voice</a>.</p>
+<p>A more natural conversation. Speak, pause, and interrupt when you need to. Carvis still checks permissions before controlling your home.</p>
+<section id="login" hidden aria-label="Sign in to Carvis">
+<h2>Sign in to Carvis</h2>
+<p>Use your existing Carvis account. This address needs its own sign-in, even if you signed in at another Carvis address.</p>
+<form id="loginForm">
+<label for="username">Username</label><input id="username" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="64" required>
+<label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" maxlength="256" required>
+<button id="signIn" type="submit">Sign in</button>
+<p id="loginError" role="alert" hidden></p>
+</form></section>
+<nav><button id="start" disabled>Start conversation</button><button id="end" disabled>End conversation</button></nav>
+<p id="status" role="status" aria-live="polite">Checking sign-in…</p>
+<audio id="audio" autoplay controls></audio>
+<section id="confirmation" hidden aria-label="Confirm requested action"><p id="confirmationText"></p><button id="accept">Accept</button> <button id="decline">Decline</button></section>
+<p class="note">Live voice preview · Requires HTTPS or localhost. End the conversation when finished. Ending voice does not undo an action already sent.</p>
+<div id="transcript" aria-label="Conversation captions"></div><script type="module" src="/integrations/assistant-engine/live.js"></script>
+</body></html>

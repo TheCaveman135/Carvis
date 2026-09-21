@@ -113,6 +113,15 @@ test("TV configuration requires real entity input and rejects unsafe slugs", () 
     "local_apple_tv_ai",
   );
 });
+test("TV tool instructions follow the owner's reply options", async () => {
+  const f = fixture();
+  assert.match((await f.tool('tv_button')).description, /stay silent/);
+  assert.match((await f.tool('tv_command')).description, /one short reply/);
+  f.config.silentNavigation = false;
+  f.config.shortReplies = false;
+  assert.doesNotMatch((await f.tool('tv_button')).description, /stay silent/);
+  assert.match((await f.tool('tv_command')).description, /results naturally/);
+});
 test("TV authenticates through exact Home Assistant ingress contract", async () => {
   const f = fixture();
   await (await f.tool("tv_start")).execute({ goal: "Find a comedy" });
