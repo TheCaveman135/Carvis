@@ -40,3 +40,12 @@ test('an unchanged imported companion address does not block display edits, but 
  assert.throws(()=>module.validateConfig({...config,publicBaseUrl:'http://192.0.2.10:8788'}),/HTTPS/);
  assert.throws(()=>module.validateConfig({...config,pairingToken:'short'}),/32/);
 });
+
+test('voice defaults to the same Deepgram provider the runtime and UI use',async t=>{
+ const r=await fixture(t),voice=r.modules.get('voice');
+ assert.equal(voice.fields.find(f=>f.key==='stt__engine').default,'deepgram');
+ assert.equal(voice.validateConfig({}).stt__engine,'deepgram');
+ assert.equal(voice.validateConfig({stt__engine:''}).stt__engine,'deepgram');
+ assert.equal(voice.validateConfig({stt__engine:'assemblyai'}).stt__engine,'assemblyai');
+ assert.throws(()=>voice.validateConfig({stt__engine:'invalid'}),/Choose a valid/);
+});

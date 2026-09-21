@@ -20,6 +20,7 @@ function validateFields(fields, input = {}) {
   const output = { ...input };
   for (const field of fields) {
     let value = output[field.key] ?? field.default;
+    if(field.key==='stt__engine' && value==='')value='deepgram';
     if (value === undefined) continue;
     if (field.type === 'json') {
       if (typeof value === 'string') { try { value = JSON.parse(value); } catch { throw Error(`${field.label} must be valid JSON.`); } }

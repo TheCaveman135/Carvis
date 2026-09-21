@@ -83,7 +83,7 @@ export function decorateAssistantIntegration(module) {
     if (field.type === 'json' && /(?:keyterms|allowedDomains|wakeWords|intents)$/.test(field.key)) field.type = 'string-array';
     if (['voice__wakeWords','stt__keyterms'].includes(field.key)) field.advanced = false;
     if (/^(?:tools__|memory__|voice__(?:historyTurns|minChars|dedupeWindowSec|confirmationTimeoutSec)|glasses__(?:feedSize|proactiveMinGapSec))/.test(field.key)) field.advanced = true;
-    if (field.key === 'stt__engine') {field.type='select';field.options=[{value:'deepgram',label:'Deepgram'},{value:'assemblyai',label:'AssemblyAI'}];}
+    if (field.key === 'stt__engine') {field.default='deepgram';field.type='select';field.options=[{value:'deepgram',label:'Deepgram'},{value:'assemblyai',label:'AssemblyAI'}];}
     if (field.key === 'areaNotes') field.type = 'room-notes';
     if (field.key === 'speech__outputMode') { field.type = 'select'; field.options = [
       {value:'physical_then_ha',label:'Physical Carvis, then Home Assistant speaker'},
