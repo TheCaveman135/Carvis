@@ -125,6 +125,8 @@ export const DEFAULTS = {
     }
   },
   "voice": {
+    "inputDevice": "",
+    "inputMuted": true,
     "enabled": false,
     "requireWakeWord": false,
     "wakeWords": [
@@ -224,6 +226,7 @@ export const DEFAULTS = {
     ]
   },
   "speech": {
+    "localDevice": "",
     "mediaPlayer": "",
     "ttsEntity": "",
     "autoReplies": false,

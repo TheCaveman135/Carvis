@@ -181,8 +181,11 @@ export async function mount(ui) {
       })),card('Room and object context','Add descriptions so Carvis recognizes furniture and rooms correctly.',el('a',{class:'button compact',href:'#integrations/home-assistant/settings'},'Edit room notes')));
   }
   async function voice(snapshot) {
-    const microphone=el('div');content.append(card('Browser microphone','Record a request using a microphone connected to this browser. Deepgram transcribes it for the normal Carvis voice flow.',microphone));
-    const {mountMic}=await import('./mic-panel.js');if(signal.aborted)return;dispose=mountMic(microphone,{el,field,signal});
+    const micStatus=el('p',{role:'status'});
+    const showMic=mic=>{micStatus.textContent=mic.error || (mic.listening?'Listening continuously on the Carvis server. You can close this webpage.':snapshot.config?.voice?.inputDevice==='even-glasses'?'Even glasses selected. Audio comes from the paired companion.':snapshot.config?.voice?.inputMuted?'Microphone is muted.':'Select a microphone in Audio devices below.');};
+    showMic(snapshot.hostMicrophone || {});
+    content.append(card('Server microphone','The microphone runs on the machine where Carvis is installed.',micStatus,el('p',{class:'small muted'},'Choose your input and mute or unmute it in Audio devices. Even glasses use their own companion connection.')));
+    const poll=setInterval(()=>{void get('/api/voice/microphone').then(showMic).catch(()=>{});},3000);dispose=()=>clearInterval(poll);
     transcript(snapshot);
   }
   function home(snapshot) {

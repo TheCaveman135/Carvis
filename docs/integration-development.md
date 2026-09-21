@@ -86,3 +86,21 @@ Configuration must contain no developer-specific defaults or hidden endpoints.
 ## Testing
 
 Use `ctx.fetch` and an injectable service boundary to mock external systems. Test disabled behavior, invalid arguments, selected-resource boundaries, confirmation replay, uncertain requests, and configuration changes. Never run tests against a developer's home or cloud account. Include a setup guide and explain external dependencies and data flows.
+
+### Audio on the installed machine
+
+Voice input can select a microphone on the Carvis server. On macOS, Carvis
+builds a small Core Audio helper with Apple's Command Line Tools, lists stable
+hardware device IDs, and captures 16 kHz mono PCM while the selected input is
+unmuted. The helper may need macOS Microphone permission on first use. Capture
+continues independently of browser tabs. Silence is discarded locally; completed
+utterances use the existing transcription and guarded voice request pipeline.
+Muting, disabling voice, stopping Carvis, or losing the device stops capture.
+Fresh installations have no selected local input and start muted.
+
+Spoken replies can target a local macOS speaker using the installed system voice,
+or an explicitly permitted Home Assistant media player using the configured HA
+TTS service. Local playback suppresses local transcription to avoid self-triggering.
+Even glasses become an input choice when their integration is enabled and keep
+using the companion's own audio transport. Other platforms retain companion and
+HA audio; native device capture/playback currently supports macOS only.

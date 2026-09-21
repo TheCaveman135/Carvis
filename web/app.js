@@ -1500,6 +1500,7 @@ async function renderIntegrationDetail(main, id, section, version) {
 }
 function integrationFieldGroup(integration, definition) {
   if(definition.key==='agent__allowedDomains')return {id:'devices',label:'Devices & permissions',description:'Choose what Carvis can see, what it can control, and when it needs to ask.'};
+  if(['voice__inputDevice','voice__inputMuted','speech__outputMode','speech__localDevice','speech__mediaPlayer'].includes(definition.key))return {id:'connection',label:'Audio devices',description:'Devices on the Carvis server, plus your enabled integrations.'};
   const supplied = definition.group;
   const groupId = value => String(value).replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const names = { carvis: "Assistant behavior", tools: "Tool execution", ollama: "Local models", models: "Model roles", voice: "Conversation", stt: "Speech recognition", liveVoice: "Live voice", speech: "Speech & speakers", classifier: "Proactive decisions", sessions: "Activity sessions", memory: "Memory & patterns", search: "Search provider", atlas: "Project connection", mac: "Desktop connection", physicalCarvis: "Device connection", agent: "Device behavior", glasses: "Display & gestures" };
@@ -1612,6 +1613,27 @@ function configureIntegration(integration, host, {inline = false} = {}) {
         }catch(error){if(version!==requestVersion)return;control.title=errorText(error);if(control.parentElement){let note=control.parentElement.querySelector('.model-discovery-error');if(!note){note=el('span',{class:'field-description model-discovery-error',role:'status'});control.parentElement.append(note);}note.textContent=errorText(error);}}
       };
       queueMicrotask(()=>void control.loadModels());
+    }
+    if(['voice__inputDevice','speech__localDevice','speech__mediaPlayer'].includes(f.key)){
+      control=el('select',{name:f.key},el('option',{value:''},'Choose a device'),...(value?[el('option',{value,selected:true},`${value} (saved)`)]:[]));
+      queueMicrotask(async()=>{
+        try{
+          let options;
+          if(f.key==='speech__mediaPlayer'){
+            const ha=state.data.integrations.find(i=>i.id==='home-assistant');
+            if(!ha?.enabled)throw Error('Enable Home Assistant to choose an HA speaker.');
+            const result=await api('/api/integrations/home-assistant/entities');
+            options=result.entities.filter(e=>e.entity_id.startsWith('media_player.')&&ha.config?.controlled?.includes(e.entity_id)).map(e=>({value:e.entity_id,label:e.name || e.entity_id}));
+          }else{
+            const result=await api(`/api/integrations/${integration.id}/audio-devices`);
+            options=f.key==='voice__inputDevice'?result.inputs:result.outputs;
+            if(result.warning)control.title=result.warning;
+          }
+          const current=control.value;control.replaceChildren(el('option',{value:''},'Choose a device'),...options.map(o=>el('option',{value:o.value},o.label)));
+          if(current&&!options.some(o=>o.value===current))control.append(el('option',{value:current},'Saved device (unavailable)'));
+          control.value=current;
+        }catch(error){control.parentElement?.append(el('span',{class:'field-description',role:'status'},errorText(error)));}
+      });
     }
     const sharedKeyId = {openaiKey:'openai',anthropicKey:'anthropic',stt__deepgramKey:'deepgram',stt__assemblyaiKey:'assemblyai',search__geminiKey:'gemini'}[f.key];
     if(sharedKeyId && f.type==='password' && !cfg[`has${f.key[0].toUpperCase()}${f.key.slice(1)}`]) control.placeholder=state.data.apiKeys?.[sharedKeyId]?.saved ? 'Using global key · optional override' : 'Optional override · set shared key in Settings';

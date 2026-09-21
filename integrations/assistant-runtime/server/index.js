@@ -1,3 +1,4 @@
+import { HostMicrophone, speakLocal, stopLocalPlayback } from './host-audio.js';
 import {IntegrationBridge} from './integration-bridge.js';
 import {enabled, effectiveConfig, toolFeature, routeFeature, paused} from './features.js';
 import {visibleModelInput} from './entity-visibility.js';
@@ -69,7 +70,8 @@ const physicalCarvis = new PhysicalCarvis({
   onChange: (state) => broadcast({ type: 'physical-carvis', physicalCarvis: state }),
 });
 const phoneSpeaker = new PhoneSpeaker();
-const voiceOutput = new VoiceOutput({ getConfig: loadConfig, ha, physicalCarvis, phoneSpeaker });
+let hostMicrophone;
+const voiceOutput = new VoiceOutput({ getConfig: loadConfig, ha, physicalCarvis, phoneSpeaker,localSpeaker:(text,device)=>speakLocal(text,device,{onStart:()=>{if(hostMicrophone)hostMicrophone.speakingOutput=true;},onEnd:()=>{setTimeout(()=>{if(hostMicrophone)hostMicrophone.speakingOutput=false;},500);}}) });
 const feed = new Feed(loadConfig, { onEntry: (entry) => {process.send?.({type:"reply",entry});return enabled(loadConfig(),"speech") ? voiceOutput.speakReply(entry) : undefined;} });
 const glassesDisplay = new GlassesDisplay({
   onChange: (state) => broadcast({ type: 'glasses-display', glassesDisplay: state }),
@@ -338,6 +340,7 @@ function snapshot() {
     mac: mac.state(),
     feed: feed.state(),
     stt: stt.state(),
+    hostMicrophone: hostMicrophone?.state() || {listening:false},
     carvis: carvis.state(),
     hud: hud.state(),
     glassesDisplay: glassesDisplay.state(),
@@ -379,6 +382,15 @@ async function serveStatic(req, res, urlPath) {
     res.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found');
   }
 }
+
+hostMicrophone = new HostMicrophone({onAudio:async pcm=>{
+  const config=loadConfig();
+  if(!enabled(config,'voice')||!config.voice.enabled||!config.stt.enabled||config.voice.inputMuted)return;
+  const heard=await stt.transcribe(pcm);
+  if(heard.text&&!loadConfig().voice.inputMuted)await voice.ingest(heard.text,{source:'server-microphone',confidence:heard.confidence});
+}});
+const hostAudioConfig=loadConfig();
+if(enabled(hostAudioConfig,'voice')&&hostAudioConfig.voice.enabled&&hostAudioConfig.stt.enabled&&!hostAudioConfig.voice.inputMuted&&hostAudioConfig.voice.inputDevice?.startsWith('local:'))void hostMicrophone.start(hostAudioConfig.voice.inputDevice.slice(6));
 
 const hudInteractions = new HudInteractions({hud,ha,getConfig:loadConfig,gateway,voice});
 
@@ -580,6 +592,8 @@ const routes = {
   'POST /api/voice/audio': async (req, res) => {
     if (!isAuthorisedRequest(req, loadConfig())) return sendJson(res, 401, { ok: false, message: 'unauthorised' });
     const config = loadConfig();
+    const audioSource=new URL(req.url,'http://localhost').searchParams.get('source')==='browser'?'browser':'even-glasses';
+    if(config.voice.inputDevice && (config.voice.inputMuted || config.voice.inputDevice!==audioSource))return sendJson(res,200,{ok:true,outcome:'ignored',reason:config.voice.inputMuted?'microphone muted':'another microphone is selected'});
     if (!config.stt.enabled) return sendJson(res, 200, { ok: false, message: 'speech to text is switched off' });
 
     let pcm;
@@ -616,6 +630,7 @@ const routes = {
     });
   },
 
+  'GET /api/voice/microphone': async (_req,res) => sendJson(res,200,hostMicrophone.state()),
   'GET /api/stt': async (req, res) => sendJson(res, 200, stt.state()),
 
   // ── Carvis ───────────────────────────────────────────────────────
@@ -1169,7 +1184,7 @@ server.listen(0,'127.0.0.1',()=>process.send?.({type:'ready',port:server.address
 let stopping=false;
 function shutdown(code=0) {
   if(stopping)return;stopping=true;
-  integrationBridge.close();automations.stop();sessions.stop();ha.disconnect();stt.stop();hud.stop?.();
+  hostMicrophone?.stop();stopLocalPlayback();integrationBridge.close();automations.stop();sessions.stop();ha.disconnect();stt.stop();hud.stop?.();
   for(const timer of ha.appleTv?.monitors?.values() || [])clearTimeout(timer);
   server.close(()=>process.exit(code));setTimeout(()=>process.exit(code),1000).unref();
 }

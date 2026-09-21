@@ -23,7 +23,7 @@ test('all bundled integrations explain HA requirements and expose native managem
 test('speech choices match supported routes and context settings do not require raw JSON',async t=>{
  const registry=await fixture(t);
  const fields=registry.modules.get('speech').fields;
- assert.deepEqual(fields.find(f=>f.key==='speech__outputMode').options.map(o=>o.value).sort(),['ha_only','phone_only','physical_only','physical_then_ha']);
+ assert.deepEqual(fields.find(f=>f.key==='speech__outputMode').options.map(o=>o.value).sort(),['ha_only','local_only','phone_only','physical_only','physical_then_ha']);
  const context=registry.modules.get('home-assistant').fields.find(f=>f.key==='areaNotes');assert.equal(context.type,'room-notes');assert.equal(context.advanced,false);
  const engine=registry.modules.get('assistant-engine');assert.equal(engine.fields.find(f=>f.key==='models__providers').advanced,true);
 });

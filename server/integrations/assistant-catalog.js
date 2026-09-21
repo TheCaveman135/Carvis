@@ -5,7 +5,7 @@ export const CATALOG = {
   proactivity: ['required', 'Uses Home Assistant events to notice changes around your home.', 'Proactive home alerts', ['Connect Home Assistant and select the devices to observe.', 'Choose when Carvis may interrupt you and how often.']],
   cameras: ['recommended', 'Home Assistant is needed for live camera feeds. Uploaded images can be inspected without it.', 'Cameras & Images', ['Choose a vision model and enable Advanced assistant.', 'For live cameras, connect Home Assistant and select cameras for observation.', 'Add room notes or upload an image, then give Carvis a specific question.']],
   protocols: ['recommended', 'Timers and reminders work alone. Device actions and home-event triggers need Home Assistant.', 'Routines, timers & alarms', ['Enable Advanced assistant.', 'Create a timer, alarm, or describe a routine to Carvis.', 'Connect Home Assistant for routines that use your devices.']],
-  speech: ['recommended', 'Home Assistant is needed for HA speakers. Phone and physical Carvis audio can work without it.', 'Spoken replies', ['Choose where replies should play.', 'For phone audio, pair the Even Realities companion and enable its speaker.', 'For home speakers, connect Home Assistant and select a speaker and TTS provider.']],
+  speech: ['recommended', 'Home Assistant is needed for HA speakers. Local speakers, phone, and physical Carvis audio can work without it.', 'Spoken replies', ['Choose where replies should play.', 'For phone audio, pair the Even Realities companion and enable its speaker.', 'For home speakers, connect Home Assistant and select a speaker and TTS provider.']],
   'even-realities': ['recommended', 'Chat and captions work without Home Assistant. Smart-home widgets need a connected home.', 'Even Realities glasses', ['Enter the Carvis address your phone can reach.', 'Generate a pairing token and enter it in the companion app.', 'Choose display, microphone, and phone-audio preferences.']],
   'assistant-engine': ['not-required', 'Works with your model provider. Home Assistant is only needed for home-related abilities.', 'Advanced assistant', ['Choose your main model in Carvis Settings.', 'Enable this shared component before adding voice, routines, memory, or other integrations that depend on it.', 'Enable the individual features you want in Integrations. Basic text chat works without this component.']],
   voice: ['not-required', 'Uses a microphone and your speech provider. No smart-home connection is needed.', 'Voice input & chat', ['Choose a speech recognition provider and add its key.', 'Pair a microphone device such as the glasses companion. Deepgram transcribes your speech for Carvis.']],
@@ -21,7 +21,7 @@ const DESCRIPTIONS = {
   proactivity: 'Let Carvis notice changes in your home and offer relevant updates without waiting for you to ask. Choose when it may interrupt.',
   cameras: 'Ask questions about uploaded pictures or selected camera feeds—for example, what is in a room. Add room notes to help Carvis understand what it sees.',
   protocols: 'Set timers and alarms, or create repeatable routines. Connect Home Assistant for routines triggered by your devices or that control your home.',
-  speech: 'Have Carvis read its replies aloud through your phone, a Home Assistant speaker, or Carvis hardware. Choose where the audio plays.',
+  speech: 'Have Carvis read its replies aloud through a speaker on the Carvis server, your phone, a Home Assistant speaker, or Carvis hardware. Choose where the audio plays.',
   'even-realities': 'Use Carvis on Even Realities glasses: speak requests, read replies, and use interactive widgets. Requires the companion app and compatible glasses.',
   'assistant-engine': 'The shared component required by voice, memory, routines, and other advanced integrations. Enable this first, then add the features you want. Basic text chat works without it.',
   voice: 'Talk to Carvis instead of typing. Deepgram turns microphone audio into requests for your normal Carvis model. Spoken replies controls audio playback separately.',
@@ -32,6 +32,9 @@ const DESCRIPTIONS = {
   'physical-carvis': 'Connect a physical Carvis device, such as an ESP32-S3 unit, for device status, commands, and audio. Only needed if you have the hardware.',
 };
 const FIELD_HELP = {
+  voice__inputDevice: ['Microphone source', 'Choose a microphone on the Carvis server, or enabled Even glasses. Local listening continues with the webpage closed.'],
+  voice__inputMuted: ['Mute microphone', 'Stops local capture and rejects new audio from the selected source while muted.'],
+  speech__localDevice: ['Local speaker', 'A speaker connected to the machine running Carvis. Uses the installed macOS voice.'],
   voice__enabled: ['Accept voice requests', 'Allow spoken requests to enter the assistant conversation.'],
   voice__requireWakeWord: ['Require a wake word', 'Only treat speech as a request when it includes a configured wake word.'],
   voice__wakeWords: ['Wake words', 'Names or phrases you use to address Carvis. Enter one per line.'],
@@ -46,7 +49,7 @@ const FIELD_HELP = {
   stt__engine: ['Speech recognition provider', 'The service that turns your microphone audio into text.'],
   stt__model: ['Speech recognition model', 'Use a model supported by your chosen speech provider.'],
   stt__language: ['Spoken language', 'Language code, such as en for English.'],
-  speech__outputMode: ['Where replies play', 'Choose a phone, physical Carvis, Home Assistant speaker, or the configured fallback route.'],
+  speech__outputMode: ['Where replies play', 'Choose a local speaker, phone, physical Carvis, Home Assistant speaker, or the configured fallback route.'],
   speech__autoReplies: ['Read replies aloud', 'Speak Carvis responses automatically, except intentionally silent actions.'],
   speech__mediaPlayer: ['Home Assistant speaker', 'A speaker selected for control in Home Assistant settings.'],
   speech__ttsEntity: ['Home Assistant voice service', 'The TTS provider entity that creates audio for your HA speaker.'],
@@ -85,6 +88,7 @@ export function decorateAssistantIntegration(module) {
     if (field.key === 'areaNotes') field.type = 'room-notes';
     if (field.key === 'speech__outputMode') { field.type = 'select'; field.options = [
       {value:'physical_then_ha',label:'Physical Carvis, then Home Assistant speaker'},
+      {value:'local_only',label:'Speaker on the Carvis server'},
       {value:'phone_only',label:'Phone only'}, {value:'physical_only',label:'Physical Carvis only'},
       {value:'ha_only',label:'Home Assistant speaker only'},
     ]; }

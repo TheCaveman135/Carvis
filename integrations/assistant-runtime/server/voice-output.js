@@ -4,11 +4,12 @@ import { planTtsCall } from './automation-utils.js';
 import { log } from './log.js';
 
 export class VoiceOutput {
-  constructor({ getConfig, ha, physicalCarvis, phoneSpeaker, sleep = pause }) {
+  constructor({ getConfig, ha, physicalCarvis, phoneSpeaker, localSpeaker, sleep = pause }) {
     this.getConfig = getConfig;
     this.ha = ha;
     this.physicalCarvis = physicalCarvis;
     this.phoneSpeaker = phoneSpeaker;
+    this.localSpeaker = localSpeaker;
     this.sleep = sleep;
     this.recent = new Map();
     this.pendingReplies = new Set();
@@ -94,6 +95,7 @@ export class VoiceOutput {
   }
 
   async #route(body, mode, source) {
+    if (mode === 'local_only') return this.localSpeaker?.(body,this.getConfig().speech?.localDevice) || {success:false,error:'Local speaker unavailable'};
     if (mode === 'phone_only') return this.phoneSpeaker?.speak(body) || {success:false,error:'Phone speaker unavailable'};
     if (mode !== 'ha_only') {
       const physical = (!this.getConfig().integrations || enabled(this.getConfig(),'physical-carvis')) ? this.physicalCarvis?.enqueueSpeak(body, { source }) : null;

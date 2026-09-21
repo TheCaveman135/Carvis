@@ -439,7 +439,7 @@ export async function createApp({
         };
         // Entity picker is owner-only and available before enabling HA.
         const result =
-          id === "home-assistant" && suffix === "/entities" && !device
+          !device && ((id === "home-assistant" && suffix === "/entities") || (["voice","speech"].includes(id) && suffix === "/audio-devices"))
             ? await registry.modules
                 .get(id)
                 .route(request, registry.contextForTest(id))

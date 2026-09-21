@@ -1,3 +1,4 @@
+import { listHostAudio } from '../../integrations/assistant-runtime/server/host-audio.js';
 import { SECTION_OWNERS, sectionFields } from '../assistant-config.js';
 import { runtimeFor } from '../assistant-runtime.js';
 import { decorateAssistantIntegration } from './assistant-catalog.js';
@@ -50,7 +51,15 @@ export function registerAssistantServices(registry) {
       permissions: id === 'assistant-engine' ? ['Coordinate enabled Integrations through their existing guards', 'Retain private execution traces and conversation context'] : [`Use ${name.toLowerCase()} only while enabled`, 'Keep existing selection and authorization requirements'],
       validateConfig: cfg => validateFields(fields, cfg),
       async test() { return runtime.status(); },
-      async route({ method, path }) { return method === 'GET' && path === '/status' ? runtime.status() : null; },
+      async route({ method, path }) {
+        if(method==='GET'&&path==='/audio-devices'&&['voice','speech'].includes(id)){
+          let devices=[],warning='';try{devices=await listHostAudio();}catch(e){warning=e.message;}
+          const inputs=devices.filter(d=>d.input).map(d=>({value:`local:${d.uid}`,label:d.name}));
+          if(registry.store.config.integrations['even-realities']?.enabled)inputs.push({value:'even-glasses',label:'Even glasses (paired companion)'});
+          return {inputs,outputs:devices.filter(d=>d.output).map(d=>({value:d.uid,label:d.name})),warning};
+        }
+        return method === 'GET' && path === '/status' ? runtime.status() : null;
+      },
     };
     if (id === 'assistant-engine') Object.assign(module, {
       start: () => runtime.refresh(), stop: () => runtime.close(),
