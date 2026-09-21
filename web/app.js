@@ -1450,22 +1450,34 @@ async function renderIntegrationDetail(main, id, section, version) {
   const controls = integration.controls;
   const labels = [["overview","Overview"],["controls","Controls"],["settings","Settings"],["activity","Activity"]];
   if (!labels.some(([key]) => key === section)) section = "overview";
-  const body = el("div", {class:"integration-detail-body"});
+  let body = el("div", {class:"integration-detail-body"});
+  const enabledToggle=input('integration-enabled','','checkbox',{checked:integration.enabled,'aria-label':`Enable ${integration.name}`});
+  const toggleFeedback=el('div');
+  const toggleBar=el('section',{class:'integration-quick-start'},el('div',{class:'switch-row'},el('div',{},el('strong',{},'Enable integration'),el('p',{},integration.enabled?'Enabled — Carvis can use this integration.':'Disabled — finish setup below, then enable it.')),el('label',{class:'switch'},enabledToggle)),toggleFeedback);
+  enabledToggle.addEventListener('change',async()=>{
+    enabledToggle.disabled=true;
+    try {await api(`/api/integrations/${encodeURIComponent(id)}`,{method:'PUT',body:{enabled:enabledToggle.checked}});await refreshState();await route();toast(`${integration.name} ${enabledToggle.checked?'enabled':'disabled'}.`);}
+    catch(error){enabledToggle.checked=integration.enabled;formNotice(toggleFeedback,errorText(error));}
+    finally{enabledToggle.disabled=false;}
+  });
   const category = integrationCategories.find(c => c.id === integrationCategory(integration));
   main.replaceChildren(el("section", {class:"page integration-detail"},
     button("All integrations", () => navigate("integrations"), "quiet compact", "arrow"),
-    pageHeading(category.name.toUpperCase(), integration.name, integration.description),
+    pageHeading(category.name.toUpperCase(), integration.name, integration.description), toggleBar,
     el("nav", {class:"integration-detail-tabs", "aria-label": `${integration.name} sections`}, labels.map(([key,label]) => el("a", {href:`#integrations/${id}/${key}`,class:`button quiet${section===key?' active':''}`,"aria-current":section===key?"page":null}, label))), body));
   if (section === 'settings') { configureIntegration(integration, body); return; }
   if (section === 'overview') {
-    const dependencies = integrationDependencies(integration);
-    if(category.id==='required' && id!=='home-assistant' && !dependencies.some(d=>d.id==='home-assistant')) dependencies.push(...integrationDependencies({dependsOn:['home-assistant']}));
-    body.append(el("div", {class:"integration-intro-grid"},
-      el("section", {class:"control-card"}, el("h2",{},"Get started"), el("ol",{class:"setup-steps"}, (integration.setupSteps?.length ? integration.setupSteps : ['Open Settings, add your connection details, then enable the integration.']).map(step => el("li",{},step))), button("Open settings",()=>navigate(`integrations/${id}/settings`),"primary compact")),
-      el("section", {class:"control-card"}, el("h2",{},category.name),el("p",{},integration.homeAssistant?.note || category.description),
-        dependencies.length ? el("div",{class:"setup-dependencies"},el("h3",{},"Other integrations"),dependencies.map(d=>el("p",{},el("a",{href:`#integrations/${d.id}`},d.name),` · ${d.enabled?'enabled':'set up first'}`))) : null,
-        el("details",{},el("summary",{},"What this integration can access"),el("ul",{},(integration.permissions||[]).map(p=>el("li",{},typeof p==='string'?p:p.description)))))));
-    return;
+    const dependencies=integrationDependencies(integration);
+    const missingDependencies=dependencies.filter(d=>!d.optional&&!d.enabled);
+    if(missingDependencies.length)body.append(el('section',{class:'control-card'},el('h2',{},'Set up these first'),...missingDependencies.map(d=>el('p',{},el('a',{href:`#integrations/${d.id}`},d.name),' is required before you can enable this integration.'))));
+    const mainControls=el('section',{class:'integration-main-controls'});
+    if(integration.enabled && !integrationControlsMissing(integration).length && controls?.module)body.append(el('h2',{},'Quick controls'),mainControls);
+    const setup=el('section',{class:'integration-inline-setup'});
+    body.append(el('h2',{},integration.enabled?'Connection & preferences':'Set up your integration'),setup);
+    configureIntegration(integration,setup,{inline:true});
+    body.append(el('details',{class:'integration-help'},el('summary',{},'Setup guide & requirements'),el('p',{},integration.homeAssistant?.note || category.description),el('ol',{class:'setup-steps'},(integration.setupSteps||[]).map(step=>el('li',{},step)))));
+    if(!integration.enabled || integrationControlsMissing(integration).length || !controls?.module)return;
+    body=mainControls;section='controls';
   }
   const missing = integrationControlsMissing(integration);
   if (!integration.enabled || missing.length || !controls?.module) {
@@ -1537,20 +1549,20 @@ function integrationFieldValue(definition, control) {
   if (definition.type === "entities") return [...new Set(value.split(/[\s,]+/).filter(Boolean))];
   return value;
 }
-function configureIntegration(integration, host) {
+function configureIntegration(integration, host, {inline = false} = {}) {
   if (!host) { navigate(`integrations/${integration.id}/settings`); return; }
   const values = {}, cfg = integration.config || {}, feedback = el("div"), groups = new Map();
   const dependencies = integrationDependencies(integration), requiredMissing = dependencies.filter(item => !item.optional && !item.enabled);
   const enabled = input("enabled", "", "checkbox", { checked: integration.enabled, "aria-label": `Enable ${integration.name}` });
   const form = el("form", { class: "integration-settings-form", novalidate: true });
   const permissionText = (integration.permissions || []).map(permission => el("li", {}, icon("check"), typeof permission === "string" ? permission : permission.description || permission.name || "Integration access"));
-  form.append(el("div", { class: "switch-row" }, el("div", {}, el("strong", {}, "Enable integration"), el("p", {}, "Allow Carvis to use this integration after you save.")), el("label", { class: "switch" }, enabled)));
   if (requiredMissing.length) form.append(el("div", { class: `integration-dependencies${requiredMissing.length ? " attention" : ""}` }, el("h3", {}, "Works with"), dependencies.map(item => el("div", { class: "dependency-row" }, el("div", {}, el("strong", {}, item.name), el("span", {}, item.optional ? "Optional connection" : "Required integration")), el("span", { class: `dependency-state${!item.enabled ? " off" : ""}` }, item.enabled ? "Enabled" : item.integration ? "Disabled" : "Not installed"))), requiredMissing.length ? el("p", {}, "Set up and enable the required integrations first. You can still save this integration’s settings while it is disabled.") : null));
   const permissions = el("details", { class: "integration-permissions" }, el("summary", {}, `Access & abilities${permissionText.length ? ` · ${permissionText.length}` : ""}`), permissionText.length ? el("ul", {}, permissionText) : el("p", { class: "small muted" }, "No extra permissions declared."));
   if (dependencies.length && !requiredMissing.length) form.append(el("p",{class:"dependency-ready small muted"},"Connected with ", dependencies.map((item,index)=>el("span",{},index?", ":"",el("a",{href:`#integrations/${item.id}`},item.name)))));
   const tabs = el("div", { class: "integration-settings-tabs", role: "tablist", "aria-label": "Settings sections" }), panels = el("div", { class: "integration-settings-panels" });
   let activeGroup = null;
   const activate = (id, focus = false) => {
+    if(inline)return;
     activeGroup = id;
     for (const [key, group] of groups) { const selected = key === id; group.panel.hidden = !selected; group.tab.classList.toggle("active", selected); group.tab.setAttribute("aria-selected", String(selected)); group.tab.tabIndex = selected ? 0 : -1; if (selected && focus) group.tab.focus(); }
   };
@@ -1573,6 +1585,7 @@ function configureIntegration(integration, host) {
   let entitySection = null;
   for (const definition of integration.fields || []) {
     const f = definition;
+    if(inline && f.key.startsWith('models__')) continue;
     if (integration.id === "home-assistant" && ["observed", "controlled", "guards"].includes(f.key)) continue;
     const group = getGroup(f), value = cfg[f.key] ?? f.default;
     let control;
@@ -1591,7 +1604,7 @@ function configureIntegration(integration, host) {
     values[f.key] = { control, field: f, groupId: group.id };
     const description = [f.description, f.help, ["string-array", "string_array"].includes(f.type) ? "Enter one value per line." : f.type === "json" ? "Use JSON for lists or structured settings. Leave blank to keep the saved value; use [] or {} to clear it." : null].filter((text, index, all) => typeof text === "string" && text && all.indexOf(text) === index).join(" ");
     let destination = group.panel;
-    if (f.advanced) {
+    if (f.advanced || inline && sharedKeyId) {
       let advanced = group.panel.querySelector('.advanced-settings');
       if (!advanced) { advanced = el('details',{class:'advanced-settings'},el('summary',{},'Advanced settings'),el('p',{class:'small muted'},'Optional tuning. Keep the defaults unless you have a specific reason to change them.')); group.panel.append(advanced); }
       destination = advanced;
@@ -1618,9 +1631,20 @@ function configureIntegration(integration, host) {
     const rank = key => /connection|controller|credentials/.test(key) ? 0 : /^(stt|speech|devices|reply-behavior)$/.test(key) ? 1 : /models|tools|ollama|agent/.test(key) ? 4 : 2;
     const ordered = [...groups].sort(([a],[b])=>rank(a)-rank(b));
     for (const [,g] of ordered) { tabs.append(g.tab); panels.append(g.panel); const advanced=g.panel.querySelector('.advanced-settings'); if(advanced)g.panel.append(advanced); }
-    form.append(el('div',{class:'settings-layout'},tabs,panels)); activate(ordered[0][0]);
+    if(inline){
+      panels.classList.add('integration-settings-inline');
+      for(const [,g] of ordered){
+        g.panel.hidden=false;g.panel.removeAttribute('role');g.panel.removeAttribute('aria-labelledby');
+        if(!g.panel.querySelector(':scope > .field') && g.panel.querySelector('.advanced-settings')){
+          const folded=el('details',{class:'integration-advanced-group'},el('summary',{},g.metadata.label));
+          g.panel.before(folded);folded.append(g.panel);
+        }
+      }
+      form.append(panels);
+    }else {form.append(el('div',{class:'settings-layout'},tabs,panels)); activate(ordered[0][0]);}
   }
   else form.append(el("p", { class: "small muted" }, "This integration has no additional settings."));
+  if(inline && integration.fields.some(f=>f.key.startsWith('models__')))form.prepend(el('p',{class:'small muted'},'AI models and shared API keys are managed in ',el('a',{href:'#settings'},'Carvis Settings → Model Router'),' .'));
   const collectConfig = () => {
     const config = {};
     for (const [key, entry] of Object.entries(values)) {

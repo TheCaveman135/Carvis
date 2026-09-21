@@ -2007,3 +2007,14 @@ dialog::backdrop {
 .settings-layout:has(.integration-settings-panel:not([hidden]) .entity-manager) .integration-settings-tab{width:auto;white-space:nowrap;flex-shrink:0}
 .settings-layout .integration-settings-panel:has(.entity-manager){min-width:0;padding:18px}
 .entity-table{min-width:780px}.entity-table td,.entity-table th{padding:12px 10px}
+
+/* Integration essentials stay on the landing page. */
+.integration-quick-start{padding:18px 22px;background:var(--raised);border:1px solid var(--line);border-radius:12px;margin-bottom:20px}
+.integration-quick-start .switch-row{margin:0}
+.integration-detail-body>h2{font-size:19px;margin:26px 0 16px}
+.integration-settings-inline{display:grid;gap:18px}
+.integration-settings-inline>.integration-settings-panel{display:block;min-width:0;border:1px solid var(--line);border-radius:12px;padding:22px;background:var(--panel)}
+.integration-inline-setup .integration-settings-form>.modal-footer{position:static}
+.integration-inline-setup .integration-settings-form{max-width:none}
+
+.integration-advanced-group{border:1px solid var(--line);border-radius:12px;padding:18px 22px}.integration-advanced-group>summary{cursor:pointer;color:var(--text);font-weight:550}.integration-advanced-group .integration-settings-panel{padding:18px 0 0}
