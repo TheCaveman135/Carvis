@@ -4,7 +4,7 @@ import { decorateAssistantIntegration } from './assistant-catalog.js';
 
 const descriptions = {
   'assistant-engine': ['Advanced assistant', 'Conversation, fast commands, model roles, detailed execution traces, and coordination of your enabled Integrations.', 'Intelligence & routines'],
-  voice: ['Voice conversation', 'Speech recognition, contextual follow-ups, acknowledgements, and live voice chat.', 'Voice & display'],
+  voice: ['Voice conversation', 'Speech recognition, contextual follow-ups, and acknowledgements through the normal assistant.', 'Voice & display'],
   speech: ['Speech output', 'Read replies through your configured phone, Home Assistant speaker, or physical Carvis.', 'Voice & display'],
   protocols: ['Protocols, timers & alarms', 'Create and manage deterministic routines, timers, alarms, variables, and their execution history.', 'Intelligence & routines'],
   proactivity: ['Proactivity & sessions', 'Notice meaningful changes, respect your interruption settings, and track activity sessions.', 'Intelligence & routines'],

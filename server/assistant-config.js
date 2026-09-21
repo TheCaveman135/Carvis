@@ -3,7 +3,7 @@ import { DEFAULTS } from '../integrations/assistant-runtime/defaults.js';
 
 export const SECTION_OWNERS = {
   'assistant-engine': ['carvis', 'tools', 'ollama', 'models'],
-  voice: ['voice', 'stt', 'liveVoice'], speech: ['speech'], protocols: [],
+  voice: ['voice', 'stt'], speech: ['speech'], protocols: [],
   proactivity: ['classifier', 'sessions'], 'learned-memory': ['memory'],
   cameras: [], 'web-search': ['search'], atlas: ['atlas'], desktop: ['mac'],
   'physical-carvis': ['physicalCarvis'], 'home-assistant': ['agent'],

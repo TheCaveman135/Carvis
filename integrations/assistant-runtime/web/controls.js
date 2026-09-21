@@ -181,11 +181,7 @@ export async function mount(ui) {
       })),card('Room and object context','Add descriptions so Carvis recognizes furniture and rooms correctly.',el('a',{class:'button compact',href:'#integrations/home-assistant/settings'},'Edit room notes')));
   }
   async function voice(snapshot) {
-    const live=el('div',{class:'live-conversation'},el('p',{id:'status',role:'status'},'Checking voice availability…'),el('div',{class:'action-row'},el('button',{id:'start',type:'button',class:'button primary'},'Start conversation'),el('button',{id:'end',type:'button',class:'button',disabled:true},'End conversation')),el('audio',{id:'audio',autoplay:true,controls:true}),el('div',{id:'confirmation',class:'confirmation-card',hidden:true},el('p',{id:'confirmationText'}),el('button',{id:'accept',type:'button',class:'button'},'Approve'),el('button',{id:'decline',type:'button',class:'button'},'Decline')),el('pre',{id:'transcript',class:'live-captions','aria-live':'polite'}));
-    content.append(card('Talk to Carvis','Uses this browser’s microphone and speaker. Your browser will ask for microphone permission.',live));
-    const {mountLive}=await import('./live-panel.js');
-    if(signal.aborted)return;
-    dispose=mountLive(live);
+    content.append(card('Voice input','Deepgram transcribes audio from your paired microphone device. Carvis processes the text using your normal assistant model.',el('p',{},'Use Spoken replies to choose where Carvis answers aloud.')));
     transcript(snapshot);
   }
   function home(snapshot) {

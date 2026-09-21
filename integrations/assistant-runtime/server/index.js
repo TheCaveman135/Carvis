@@ -37,7 +37,6 @@ import { Sessions } from './session.js';
 import { randomBytes } from 'node:crypto';
 import { PhysicalCarvis } from './physical-carvis.js';
 import { VoiceOutput } from './voice-output.js';
-import { LiveVoice } from './live-voice.js';
 import { AppleTvController } from './apple-tv.js';
 import { Vision, IMAGE_LIMIT } from './vision.js';
 import { internalRequest, isAuthorisedRequest, hasAccount, createAccount, verifyPassword, issueSession, sessionUser, sessionCookie, clearSessionCookie, isSameOriginRequest, LoginAttemptLimiter } from './auth.js';
@@ -381,25 +380,9 @@ async function serveStatic(req, res, urlPath) {
   }
 }
 
-const liveVoice = new LiveVoice({getConfig:loadConfig,request:(text,options)=>voice.request(text,options)});
 const hudInteractions = new HudInteractions({hud,ha,getConfig:loadConfig,gateway,voice});
 
 const routes = {
-  'GET /api/live/status': async (_req,res) => sendJson(res,200,liveVoice.status()),
-  'POST /api/live/session': async (req,res) => {
-    if(!isSameOriginRequest(req)) return sendJson(res,403,{message:'Open Carvis directly to start voice'});
-    try {const {sdp}=await readBody(req);sendJson(res,201,await liveVoice.create(sdp));}
-    catch(err){sendJson(res,400,{message:err.message});}
-  },
-  'POST /api/live/delegate': async (req,res) => {
-    if(!isSameOriginRequest(req)) return sendJson(res,403,{message:'Open Carvis directly'});
-    try {sendJson(res,200,await liveVoice.delegate(await readBody(req)));}
-    catch(err){sendJson(res,400,{message:err.message});}
-  },
-  'POST /api/live/end': async (req,res) => {
-    if(!isSameOriginRequest(req)) return sendJson(res,403,{message:'Open Carvis directly'});
-    const {sessionId}=await readBody(req);sendJson(res,200,liveVoice.end(sessionId));
-  },
   // ── Browser login ──────────────────────────────────────────────
   'GET /api/auth/status': async (req, res) => {
     const config = loadConfig();

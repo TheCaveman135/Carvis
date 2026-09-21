@@ -26,12 +26,6 @@ export async function integrationModels(input,store,registry,fetcher=fetch){
  }else if(input.field==='stt__model'){
    if(cfg.stt.engine==='assemblyai')return {models:['universal-3-5-pro'],note:'Models supported by Carvis’s AssemblyAI audio endpoint.'};
    kind='deepgram';url='https://api.deepgram.com/v1/models';headers={Authorization:`Token ${cfg.stt.deepgramKey || ''}`};
- }else if(input.field==='liveVoice__model'){
-   if(!cfg.liveVoice.baseUrl)throw Error('Set the live voice API address first.');
-   url=endpoint(cfg.liveVoice.baseUrl)+'/models';
-   // Use the same key binding as the live voice runtime.
-   const provider=cfg.models.providers.find(p=>p.kind==='openai'&&p.baseUrl?.replace(/\/$/,'')==='https://api.openai.com/v1');
-   const key=provider?.apiKeyEnv?env[provider.apiKeyEnv]:'';if(key)headers.Authorization=`Bearer ${key}`;
  }else if(input.field==='speechModel'){
    if(!saved.speechBaseUrl)throw Error('Set the speech API address first.');
    url=endpoint(saved.speechBaseUrl)+'/models';if(saved.speechApiKey)headers.Authorization=`Bearer ${saved.speechApiKey}`;
