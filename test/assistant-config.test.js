@@ -36,3 +36,17 @@ test('runtime projection preserves role tuning and supplemental saved configurat
  assert.equal(projected.models.providers.find(p=>p.id==='example').api,'chat');
  assert.equal(projected.agent.houseRules,saved.agent.houseRules);
 });
+
+test('HA-dependent services stop when HA is disabled without losing their saved settings',()=>{
+  const cfg=structuredClone(DEFAULTS);
+  cfg.ha={url:'http://ha.test',token:'fixture'};cfg.classifier.enabled=true;
+  cfg.appleTv={mediaPlayer:'media_player.fixture',remoteEntity:'remote.fixture'};
+  const entries=integrationConfigFromLegacy(cfg);
+  const store={config:{auth:{},profile:{personality:''},model:{},integrations:entries},plugin:()=>({get:()=>cfg})};
+  entries['home-assistant'].enabled=false;
+  const projected=projectRuntimeConfig(store);
+  assert.equal(projected.integrations['apple-tv'],false);assert.equal(projected.integrations.proactivity,false);
+  assert.equal(entries['apple-tv'].enabled,true);assert.equal(entries.proactivity.enabled,true);
+  entries['home-assistant'].enabled=true;
+  assert.equal(projectRuntimeConfig(store).integrations['apple-tv'],true);
+});

@@ -103,6 +103,7 @@ export function projectRuntimeConfig(store) {
     }
   }
   cfg.integrations = Object.fromEntries(Object.keys(SECTION_OWNERS).map(id => [id, store.config.integrations[id]?.enabled === true]));
+  for (const id of ['apple-tv', 'proactivity']) cfg.integrations[id] &&= cfg.integrations['home-assistant'];
   const config = id => store.config.integrations[id]?.config || {};
   const ha = config('home-assistant');
   cfg.ha = { url: ha.baseUrl || '', token: ha.token || '', allowInsecureTls: ha.allowInsecureTls === true };

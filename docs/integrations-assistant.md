@@ -6,35 +6,41 @@ capabilities you want. Each has its own switch and settings in Integrations.
 The engine runs as an isolated child process; disabling it stops those services.
 Configuration changes restart that process without replaying interrupted actions.
 
-Use **Open workspace** for detailed execution traces, the protocol editor, image
-attachments, the live TV view, transcripts, and the HUD preview. It remains on
-the same Carvis origin and uses your existing owner login. The Back to Carvis
-link returns to the main chat and Integration settings.
+## Find settings and controls
 
-## Find settings
+The integration center is a responsive card grid with three groups. HA means
+Home Assistant:
 
-The catalog contains 14 integrations in four sections. Search by integration name
-or by a setting, such as “silent navigation.” **All integrations** shows every
-installed integration; **Enabled** and **Needs attention** narrow the list.
-
-| Section | Integrations |
+| Group | Integrations |
 | --- | --- |
-| Home & devices | Home Assistant; Apple TV AI; Cameras & images |
-| Voice & display | Voice conversation; Speech output; Even Realities; Physical Carvis |
-| Intelligence & routines | Assistant engine; Protocols, timers & alarms; Proactivity & sessions; Memory & patterns |
-| Connected services | Web search; Project Atlas; Desktop bridge |
+| HA required | Home Assistant; Apple TV AI; Helpful updates (proactivity) |
+| HA recommended | Cameras & Images; Routines, timers & alarms; Speech output; Even Realities glasses |
+| HA not required | Assistant engine; Voice conversation; Memory & patterns; Search the web; Project Atlas; Desktop connection; Physical Carvis |
 
-Choose **Configure** (or **Set up** before configuration), then the relevant
-settings tab. **Enable integration** takes effect only after **Save changes**.
-You can save settings while an integration is disabled. Required integrations
-are listed above the tabs; workspaces are available once their dependencies are
-enabled. **Test saved connection** checks the saved values, so save edits first.
+Camera feeds require HA, but uploaded images do not. Timers and alarms work
+without HA; home-event triggers and device actions need it. Phone/physical-device
+speech works directly, while HA speakers need the HA connection.
 
-For TV replies, go to **Integrations → Apple TV AI → Configure → Reply behavior**.
-**Silent successful navigation** and **Short power and playback replies** both
-default to on. Save either switch to choose your behavior. The deterministic fast
-command path is provided by Assistant engine; failures and guarded requests still
-surface. See [the TV guide](integrations-apple-tv.md) for the core-only behavior.
+Choose **Manage** or **Set up** on a card. Every integration stays in the main
+Carvis UI:
+
+- **Overview:** setup steps, HA requirements, and other integrations you need.
+- **Controls:** everyday actions, such as TV tasks, timer creation, memory edits,
+  image inspection, live voice, and pairing.
+- **Settings:** connection details and behavior, grouped into submenus. Optional
+  technical tuning is under **Advanced settings**. Room notes use named text
+  fields rather than JSON.
+- **Activity:** transcripts, routine history, speech delivery, or execution traces.
+
+**Enable integration** takes effect after **Save changes**. You can save setup
+while disabled. **Test saved connection** checks saved values. Search the catalog
+by name or setting, such as “silent navigation.”
+
+For TV replies, open **Apple TV AI → Settings → Reply behavior**. Both switches
+default to on. The engine provides deterministic fast navigation; errors and
+confirmations remain visible. **Controls** shows the screen, task progress, and a
+context box that updates the same task without restarting it. Progress refreshes
+without erasing typed context. Old workspace bookmarks redirect to the new UI.
 
 ## Voice and display
 
@@ -55,7 +61,7 @@ surface. See [the TV guide](integrations-apple-tv.md) for the core-only behavior
   and dock state, poll commands, and acknowledge completion. Existing routes are
   `/api/physical-carvis/report`, `/commands`, and `/ack`; the latter two share
   the `/api/physical-carvis` prefix. Use `Authorization: Bearer <token>` or
-  `X-Carvis-Core-Token`. Pairing is owner-only through the workspace API.
+  `X-Carvis-Core-Token`. Pairing is owner-only under **Physical Carvis → Controls**.
   These are server/device contracts; no ESP32 firmware or audio hardware is
   included. The physical client must implement playback and acknowledgements.
 

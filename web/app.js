@@ -136,7 +136,7 @@ async function api(path, options = {}) {
       state.data = null;
       renderAuth(false);
     }
-    throw new Error(data.error || `Request failed (${response.status}).`);
+    throw new Error(data.error || data.message || `Request failed (${response.status}).`);
   }
   return data;
 }
@@ -626,8 +626,9 @@ function renderShell() {
 }
 async function route() {
   if (!state.data) return;
+  state.integrationCleanup?.(); state.integrationCleanup = null;
   const version = ++state.navVersion;
-  const [page, encodedId] = location.hash.replace(/^#/, "").split("/");
+  const [page, encodedId, section] = location.hash.replace(/^#/, "").split("/");
   state.page = ["integrations", "settings"].includes(page) ? page : "chat";
   let requestedId = null;
   try {
@@ -654,7 +655,10 @@ async function route() {
     state.activeId = null;
   }
   const main = renderShell();
-  if (state.page === "integrations") renderIntegrations(main);
+  if (state.page === "integrations") {
+    if (requestedId) await renderIntegrationDetail(main, requestedId, section || "overview", version);
+    else renderIntegrations(main);
+  }
   else if (state.page === "settings") renderSettings(main);
   else renderChat(main);
 }
@@ -1349,19 +1353,14 @@ function integrationIcon(id) {
         : "plug";
 }
 const integrationCategories = [
-  { id: "home-devices", name: "Home & devices", description: "Give Carvis a clear, permission-based connection to your physical world.", icon: "home" },
-  { id: "voice-display", name: "Voice & display", description: "Choose how you talk to Carvis and where its replies appear.", icon: "glasses" },
-  { id: "intelligence-routines", name: "Intelligence & routines", description: "Add useful context, reasoning, and routines when you need them.", icon: "spark" },
-  { id: "connected-services", name: "Connected services", description: "Bring your other tools and services into the conversation.", icon: "plug" },
+  { id: "required", name: "HA required", description: "These abilities need a linked Home Assistant server.", icon: "home" },
+  { id: "recommended", name: "HA recommended", description: "Useful on their own. Connect Home Assistant for home devices and extra features.", icon: "plug" },
+  { id: "not-required", name: "HA not required", description: "These abilities work without a Home Assistant connection.", icon: "spark" },
 ];
 function integrationCategory(integration) {
-  const supplied = String(integration.category?.id || integration.category || "").toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  const aliases = { "home-and-devices": "home-devices", home: "home-devices", devices: "home-devices", "voice-and-display": "voice-display", voice: "voice-display", display: "voice-display", "intelligence-and-routines": "intelligence-routines", intelligence: "intelligence-routines", routines: "intelligence-routines", services: "connected-services" };
-  const mapped = aliases[supplied] || supplied;
-  if (integrationCategories.some(category => category.id === mapped)) return mapped;
-  if (["home-assistant", "apple-tv"].includes(integration.id)) return "home-devices";
-  if (integration.id === "even-realities") return "voice-display";
-  return "connected-services";
+  const supplied = integration.homeAssistant?.requirement;
+  if (integrationCategories.some(category => category.id === supplied)) return supplied;
+  return integration.dependsOn?.some(d => (typeof d === 'string' ? d : d.id) === 'home-assistant' && !d.optional) ? 'required' : 'not-required';
 }
 function integrationDependencies(integration, key = "dependsOn") {
   return (Array.isArray(integration[key]) ? integration[key] : []).map(value => {
@@ -1370,7 +1369,7 @@ function integrationDependencies(integration, key = "dependsOn") {
     return { id, name: dependency?.name || value?.label || id || "Unknown integration", enabled: Boolean(dependency?.enabled), optional: Boolean(value?.optional), integration: dependency };
   });
 }
-function integrationWorkspaceUrl(value) {
+function integrationPanelUrl(value) {
   if (typeof value !== "string" || !value.trim()) return null;
   try {
     const url = new URL(value, window.location.origin);
@@ -1386,8 +1385,8 @@ function integrationStatus(integration) {
   if (integration.configured === false) return { label: "Enabled · setup needed", tone: "attention" };
   return { label: "Enabled", tone: "on" };
 }
-function integrationWorkspaceMissing(integration) {
-  return [...new Map([...integrationDependencies(integration), ...integrationDependencies(integration, "workspaceDependsOn")]
+function integrationControlsMissing(integration) {
+  return [...new Map([...integrationDependencies(integration), ...integrationDependencies({dependsOn:integration.controls?.dependsOn || []})]
     .filter(item => !item.optional && !item.enabled).map(item => [item.id, item])).values()];
 }
 function integrationMatchesSearch(integration, query) {
@@ -1396,22 +1395,14 @@ function integrationMatchesSearch(integration, query) {
   const text = [integration.name, integration.description, category?.name, ...fields].filter(Boolean).join(" ").toLowerCase();
   return String(query).trim().toLowerCase().split(/\s+/).every(word => text.includes(word));
 }
-function integrationWorkspaceLink(integration, className = "button compact quiet") {
-  const url = integrationWorkspaceUrl(integration.workspaceUrl);
-  if (!url || !integration.enabled) return null;
-  const missing = integrationWorkspaceMissing(integration);
-  if (missing.length) return el("p", { class: "workspace-unavailable" }, icon("info"), `Enable ${missing.map(item => item.name).join(", ")} to open this workspace.`);
-  return el("a", { class: className, href: url, target: "_blank", rel: "noopener", "aria-label": `Open ${integration.name} workspace in a new tab` }, "Open workspace", icon("arrow"));
-}
 function integrationCard(integration) {
-  const status = integrationStatus(integration), dependencies = integrationDependencies(integration);
+  const status = integrationStatus(integration);
   return el("article", { class: "integration-card", "data-integration": integration.id },
     el("div", { class: "integration-top" }, el("div", { class: "integration-icon" }, icon(paths[integration.icon] ? integration.icon : integrationIcon(integration.id))),
       el("div", { class: `integration-status ${status.tone}` }, el("span", { class: `status-dot${status.tone === "off" ? " off" : status.tone === "attention" ? " attention" : ""}` }), status.label)),
     el("h3", {}, integration.name), el("p", {}, integration.description),
-    dependencies.length ? el("div", { class: "card-dependencies" }, dependencies.map(item => el("span", { class: !item.enabled && !item.optional ? "dependency-missing" : "" }, `${item.optional ? "Works with" : "Requires"} ${item.name}${!item.enabled ? " · disabled" : ""}`))) : null,
-    el("div", { class: "integration-footer" }, el("span", { class: "version" }, `v${integration.version || "1.0.0"}`), button(integration.configured ? "Configure" : "Set up", () => configureIntegration(integration), "compact", "settings")),
-    integrationWorkspaceLink(integration, "integration-workspace-link"));
+    el("p", {class:"integration-ha-note"}, integration.homeAssistant?.note || "No Home Assistant connection needed."),
+    el("div", { class: "integration-footer" }, el("span", { class: "version" }, integration.enabled ? "Ready to manage" : "Optional integration"), button(integration.configured ? "Manage" : "Set up", () => navigate(`integrations/${integration.id}`), "compact", "arrow")));
 }
 function renderIntegrations(main) {
   const integrations = state.data.integrations || [], enabled = integrations.filter(item => item.enabled).length;
@@ -1444,13 +1435,55 @@ function renderIntegrations(main) {
   }));
   search.addEventListener("input", () => { state.integrationSearch = search.value; renderGroups(); });
   main.replaceChildren(el("section", { class: "page integrations-page" },
-    pageHeading("MAKE IT YOURS", "More possibilities. Your choice.", "Connect your devices, shape how Carvis responds, and add new abilities. Everything has a place; you choose what to turn on."),
+    pageHeading("MAKE IT YOURS", "Integration center", "Add abilities to Carvis. HA means Home Assistant — the server that connects your home devices."),
     el("div", { class: "integration-overview" }, el("div", {}, el("span", { class: "overview-number" }, String(enabled)), el("span", { class: "overview-label" }, "integrations enabled")),
-      el("p", {}, enabled ? "Your enabled integrations add tools and context to Carvis. Their settings and workspaces are always here." : "Start with a conversation. Enable an integration whenever you’re ready for more."), el("span", { class: "overview-total" }, `${integrations.length} available`)),
+      el("p", {}, enabled ? "Your enabled integrations add tools and context to Carvis. Manage their setup, controls, and activity here." : "Start with a conversation. Enable an integration whenever you’re ready for more."), el("span", { class: "overview-total" }, `${integrations.length} available`)),
     el("div", { class: "catalog-toolbar" }, filters, el("div", { class: "catalog-search" }, icon("search"), search)), resultCount, groups,
     el("div", { class: "integration-banner" }, icon("shield"), el("div", {}, el("h3", {}, "A capable assistant. Clear boundaries."), el("p", {}, "Integrations start disabled. You choose the connections, visible devices, and actions that need your confirmation."))),
-    el("details", { class: "integration-help" }, el("summary", {}, "How does Carvis grow?"), el("p", {}, "New abilities arrive through integrations. Each has its own settings, permissions, and optional workspace. Your conversations, personality, and memory stay in one place."))));
+    el("details", { class: "integration-help" }, el("summary", {}, "How does Carvis grow?"), el("p", {}, "New abilities arrive through integrations. Each has its own setup, controls, and permissions. Your conversations, personality, and memory stay in one place."))));
   renderGroups();
+}
+async function renderIntegrationDetail(main, id, section, version) {
+  const integration = state.data.integrations.find(item => item.id === id);
+  if (!integration) { navigate("integrations"); return; }
+  const controls = integration.controls;
+  const labels = [["overview","Overview"],["controls","Controls"],["settings","Settings"],["activity","Activity"]];
+  if (!labels.some(([key]) => key === section)) section = "overview";
+  const body = el("div", {class:"integration-detail-body"});
+  const category = integrationCategories.find(c => c.id === integrationCategory(integration));
+  main.replaceChildren(el("section", {class:"page integration-detail"},
+    button("All integrations", () => navigate("integrations"), "quiet compact", "arrow"),
+    pageHeading(category.name.toUpperCase(), integration.name, integration.description),
+    el("nav", {class:"integration-detail-tabs", "aria-label": `${integration.name} sections`}, labels.map(([key,label]) => el("a", {href:`#integrations/${id}/${key}`,class:`button quiet${section===key?' active':''}`,"aria-current":section===key?"page":null}, label))), body));
+  if (section === 'settings') { configureIntegration(integration, body); return; }
+  if (section === 'overview') {
+    const dependencies = integrationDependencies(integration);
+    if(category.id==='required' && id!=='home-assistant' && !dependencies.some(d=>d.id==='home-assistant')) dependencies.push(...integrationDependencies({dependsOn:['home-assistant']}));
+    body.append(el("div", {class:"integration-intro-grid"},
+      el("section", {class:"control-card"}, el("h2",{},"Get started"), el("ol",{class:"setup-steps"}, (integration.setupSteps?.length ? integration.setupSteps : ['Open Settings, add your connection details, then enable the integration.']).map(step => el("li",{},step))), button("Open settings",()=>navigate(`integrations/${id}/settings`),"primary compact")),
+      el("section", {class:"control-card"}, el("h2",{},category.name),el("p",{},integration.homeAssistant?.note || category.description),
+        dependencies.length ? el("div",{class:"setup-dependencies"},el("h3",{},"Other integrations"),dependencies.map(d=>el("p",{},el("a",{href:`#integrations/${d.id}`},d.name),` · ${d.enabled?'enabled':'set up first'}`))) : null,
+        el("details",{},el("summary",{},"What this integration can access"),el("ul",{},(integration.permissions||[]).map(p=>el("li",{},typeof p==='string'?p:p.description)))))));
+    return;
+  }
+  const missing = integrationControlsMissing(integration);
+  if (!integration.enabled || missing.length || !controls?.module) {
+    body.append(el("div",{class:"empty-card"},el("h2",{},!integration.enabled?'Set up this integration first':'Controls are not available yet'),el("p",{},missing.length?`Enable ${missing.map(item=>item.name).join(', ')} to use these controls.`:'Connection details and permissions are in Settings.'),button("Open settings",()=>navigate(`integrations/${id}/settings`),"compact")));
+    return;
+  }
+  const url = integrationPanelUrl(controls.module);
+  if (!url || !url.endsWith('.js')) { body.append(el('p',{},'This integration has an invalid controls module.')); return; }
+  body.append(el("p",{class:"muted"},"Loading…"));
+  try {
+    const module = await import(url);
+    if (version !== state.navVersion) return;
+    const abort = new AbortController();
+    state.integrationCleanup = () => abort.abort();
+    body.replaceChildren();
+    const cleanup = await module.mount({root:body,integration,section,el,button,input,field,api,toast,signal:abort.signal,navigate,integrations:state.data.integrations});
+    if (version !== state.navVersion) { cleanup?.(); return; }
+    state.integrationCleanup = () => { abort.abort(); cleanup?.(); };
+  } catch(error) { if(version===state.navVersion) body.replaceChildren(el('div',{class:'notice error'},errorText(error)),button('Retry',()=>route(),'compact')); }
 }
 function integrationFieldGroup(integration, definition) {
   const supplied = definition.group;
@@ -1469,8 +1502,24 @@ function integrationFieldGroup(integration, definition) {
   if (key.includes("__")) { const id = key.split("__")[0]; return { id, label: id.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[-_]/g, " ").replace(/^./, letter => letter.toUpperCase()), description: "" }; }
   return { id: "general", label: "General", description: "" };
 }
+function roomNotesControl(saved) {
+  const rows=el('div',{class:'room-note-rows'}),entries=[];
+  const add=(room='',note='')=>{
+    const name=input('room',room,'text',{'aria-label':'Room or area name',placeholder:'Room name'}),text=el('textarea',{rows:2,'aria-label':'Room notes',placeholder:'Objects, landmarks, or details Carvis should recognize.'},String(note));
+    const row=el('div',{class:'room-note-row'},field('Room or area',name),field('Notes',text),button('Remove',()=>{entries.splice(entries.indexOf(entry),1);row.remove();},'quiet compact'));
+    const entry={name,text};entries.push(entry);rows.append(row);
+  };
+  for(const [room,note] of Object.entries(saved))add(room,note);
+  const control=el('div',{},rows,button('Add room notes',()=>add(),'compact'));
+  control.notes=()=>Object.fromEntries(entries.filter(e=>e.name.value.trim()).map(e=>[e.name.value.trim(),e.text.value]));
+  control.checkValidity=()=>{const names=entries.map(e=>e.name.value.trim());return entries.every(e=>e.name.value.trim() || !e.text.value.trim()) && new Set(names.filter(Boolean)).size===names.filter(Boolean).length;};
+  control.reportValidity=()=>{toast('Give each note a unique room or area name.',true);return false;};
+  control.setCustomValidity=()=>{};control.validationMessage='Give each note a unique room or area name.';
+  return control;
+}
 function integrationFieldValue(definition, control) {
   const value = control.value, label = definition.label || definition.key;
+  if (definition.type === "room-notes") return control.notes();
   if (definition.type === "password" && !value) return undefined;
   if (definition.type === "boolean") return control.checked;
   if (definition.type === "number") {
@@ -1487,18 +1536,17 @@ function integrationFieldValue(definition, control) {
   if (definition.type === "entities") return [...new Set(value.split(/[\s,]+/).filter(Boolean))];
   return value;
 }
-function configureIntegration(integration) {
+function configureIntegration(integration, host) {
+  if (!host) { navigate(`integrations/${integration.id}/settings`); return; }
   const values = {}, cfg = integration.config || {}, feedback = el("div"), groups = new Map();
   const dependencies = integrationDependencies(integration), requiredMissing = dependencies.filter(item => !item.optional && !item.enabled);
   const enabled = input("enabled", "", "checkbox", { checked: integration.enabled, "aria-label": `Enable ${integration.name}` });
   const form = el("form", { class: "integration-settings-form", novalidate: true });
   const permissionText = (integration.permissions || []).map(permission => el("li", {}, icon("check"), typeof permission === "string" ? permission : permission.description || permission.name || "Integration access"));
   form.append(el("div", { class: "switch-row" }, el("div", {}, el("strong", {}, "Enable integration"), el("p", {}, "Allow Carvis to use this integration after you save.")), el("label", { class: "switch" }, enabled)));
-  if (dependencies.length) form.append(el("div", { class: `integration-dependencies${requiredMissing.length ? " attention" : ""}` }, el("h3", {}, "Works with"), dependencies.map(item => el("div", { class: "dependency-row" }, el("div", {}, el("strong", {}, item.name), el("span", {}, item.optional ? "Optional connection" : "Required integration")), el("span", { class: `dependency-state${!item.enabled ? " off" : ""}` }, item.enabled ? "Enabled" : item.integration ? "Disabled" : "Not installed"))), requiredMissing.length ? el("p", {}, "Set up and enable the required integrations first. You can still save this integration’s settings while it is disabled.") : null));
+  if (requiredMissing.length) form.append(el("div", { class: `integration-dependencies${requiredMissing.length ? " attention" : ""}` }, el("h3", {}, "Works with"), dependencies.map(item => el("div", { class: "dependency-row" }, el("div", {}, el("strong", {}, item.name), el("span", {}, item.optional ? "Optional connection" : "Required integration")), el("span", { class: `dependency-state${!item.enabled ? " off" : ""}` }, item.enabled ? "Enabled" : item.integration ? "Disabled" : "Not installed"))), requiredMissing.length ? el("p", {}, "Set up and enable the required integrations first. You can still save this integration’s settings while it is disabled.") : null));
   const permissions = el("details", { class: "integration-permissions" }, el("summary", {}, `Access & abilities${permissionText.length ? ` · ${permissionText.length}` : ""}`), permissionText.length ? el("ul", {}, permissionText) : el("p", { class: "small muted" }, "No extra permissions declared."));
-  form.append(permissions);
-  const workspace = integrationWorkspaceLink(integration, "button quiet compact");
-  if (workspace) form.append(el("div", { class: "settings-workspace" }, el("div", {}, el("strong", {}, "Integration workspace"), el("p", {}, "Open its controls and detailed activity in a separate tab.")), workspace));
+  if (dependencies.length && !requiredMissing.length) form.append(el("p",{class:"dependency-ready small muted"},"Connected with ", dependencies.map((item,index)=>el("span",{},index?", ":"",el("a",{href:`#integrations/${item.id}`},item.name)))));
   const tabs = el("div", { class: "integration-settings-tabs", role: "tablist", "aria-label": "Settings sections" }), panels = el("div", { class: "integration-settings-panels" });
   let activeGroup = null;
   const activate = (id, focus = false) => {
@@ -1509,7 +1557,7 @@ function configureIntegration(integration) {
     const metadata = integrationFieldGroup(integration, definition);
     if (!groups.has(metadata.id)) {
       const index = groups.size, panelId = `integration-settings-panel-${index}`, tabId = `integration-settings-tab-${index}`;
-      const tab = el("button", { type: "button", class: "integration-settings-tab", id: tabId, role: "tab", "aria-controls": panelId, "aria-selected": "false", tabindex: "-1", onclick: () => activate(metadata.id) }, metadata.label);
+      const tab = el("button", { type: "button", class: "integration-settings-tab", id: tabId, role: "tab", "aria-controls": panelId, "aria-selected": "false", tabindex: "-1", onclick: () => { activate(metadata.id); if(window.matchMedia("(max-width:600px)").matches) panel.scrollIntoView({block:"start",behavior:"smooth"}); } }, metadata.label);
       const panel = el("section", { class: "integration-settings-panel", id: panelId, role: "tabpanel", "aria-labelledby": tabId, hidden: true }, el("div", { class: "settings-group-heading" }, el("h3", {}, metadata.label), metadata.description ? el("p", {}, metadata.description) : null));
       groups.set(metadata.id, { tab, panel, metadata }); tabs.append(tab); panels.append(panel);
     }
@@ -1527,7 +1575,8 @@ function configureIntegration(integration) {
     if (integration.id === "home-assistant" && ["observed", "controlled", "guards"].includes(f.key)) continue;
     const group = getGroup(f), value = cfg[f.key] ?? f.default;
     let control;
-    if (f.type === "boolean") control = input(f.key, "", "checkbox", { checked: Boolean(value ?? (integration.id === "home-assistant" && f.key === "dryRun")) });
+    if (f.type === "room-notes") control = roomNotesControl(value || {});
+    else if (f.type === "boolean") control = input(f.key, "", "checkbox", { checked: Boolean(value ?? (integration.id === "home-assistant" && f.key === "dryRun")) });
     else if (f.type === "select") control = el("select", { name: f.key }, (!f.required && value === undefined) ? el("option", { value: "" }, "Choose an option") : null, (f.options || []).map(option => el("option", { value: typeof option === "string" ? option : option.value, selected: String(typeof option === "string" ? option : option.value) === String(value) }, typeof option === "string" ? option : option.label)));
     else if (["entities", "string-array", "string_array"].includes(f.type)) control = el("textarea", { name: f.key, rows: "4", placeholder: f.placeholder || "One item per line" }, Array.isArray(value) ? value.join("\n") : value ?? "");
     else if (["textarea", "json"].includes(f.type)) control = el("textarea", { name: f.key, rows: f.type === "json" ? "7" : "4", class: f.type === "json" ? "json-input" : "", spellcheck: f.type === "json" ? "false" : "true", placeholder: f.placeholder || (f.type === "json" ? "[] or {}" : "") }, typeof value === "object" || f.type === "json" && value !== undefined && typeof value !== "string" ? JSON.stringify(value, null, 2) : value ?? "");
@@ -1538,7 +1587,13 @@ function configureIntegration(integration) {
     control.addEventListener("input", () => control.setCustomValidity(""));
     values[f.key] = { control, field: f, groupId: group.id };
     const description = [f.description, f.help, ["string-array", "string_array"].includes(f.type) ? "Enter one value per line." : f.type === "json" ? "Use JSON for lists or structured settings. Leave blank to keep the saved value; use [] or {} to clear it." : null].filter((text, index, all) => typeof text === "string" && text && all.indexOf(text) === index).join(" ");
-    group.panel.append(f.type === "boolean" ? el("label", { class: "field checkbox" }, control, el("span", {}, el("span", { class: "field-label" }, f.label || f.key), description ? el("span", { class: "field-description" }, description) : null)) : field(f.label || f.key, control, description));
+    let destination = group.panel;
+    if (f.advanced) {
+      let advanced = group.panel.querySelector('.advanced-settings');
+      if (!advanced) { advanced = el('details',{class:'advanced-settings'},el('summary',{},'Advanced settings'),el('p',{class:'small muted'},'Optional tuning. Keep the defaults unless you have a specific reason to change them.')); group.panel.append(advanced); }
+      destination = advanced;
+    }
+    destination.append(f.type === "boolean" ? el("label", { class: "field checkbox" }, control, el("span", {}, el("span", { class: "field-label" }, f.label || f.key), description ? el("span", { class: "field-description" }, description) : null)) : field(f.label || f.key, control, description));
     if (f.key === "pairingToken" && integration.id === "even-realities") {
       const secretArea = el("div");
       const generate = button("Generate pairing token", async () => {
@@ -1556,15 +1611,20 @@ function configureIntegration(integration) {
     }
   }
   if (integration.id === "home-assistant") { entitySection = makeEntitySelector(cfg); getGroup({ key: "observed" }).panel.append(entitySection.node); }
-  if (groups.size) { form.append(tabs, panels); activate(groups.keys().next().value); }
+  if (groups.size) {
+    const rank = key => /connection|controller|credentials/.test(key) ? 0 : /^(stt|speech|devices|reply-behavior)$/.test(key) ? 1 : /models|tools|ollama|agent/.test(key) ? 4 : 2;
+    const ordered = [...groups].sort(([a],[b])=>rank(a)-rank(b));
+    for (const [,g] of ordered) { tabs.append(g.tab); panels.append(g.panel); const advanced=g.panel.querySelector('.advanced-settings'); if(advanced)g.panel.append(advanced); }
+    form.append(el('div',{class:'settings-layout'},tabs,panels)); activate(ordered[0][0]);
+  }
   else form.append(el("p", { class: "small muted" }, "This integration has no additional settings."));
   const collectConfig = () => {
     const config = {};
     for (const [key, entry] of Object.entries(values)) {
       const { control, field: definition, groupId } = entry;
-      if (!control.checkValidity()) { activate(groupId); control.reportValidity(); throw new Error(`${definition.label || key}: ${control.validationMessage}`); }
+      if (!control.checkValidity()) { activate(groupId); const folded=control.closest('details'); if(folded)folded.open=true; control.reportValidity(); throw new Error(`${definition.label || key}: ${control.validationMessage}`); }
       try { const value = integrationFieldValue(definition, control); if (value !== undefined) config[key] = value; }
-      catch (error) { control.setCustomValidity(errorText(error)); activate(groupId); control.reportValidity(); throw error; }
+      catch (error) { control.setCustomValidity(errorText(error)); activate(groupId); const folded=control.closest('details'); if(folded)folded.open=true; control.reportValidity(); throw error; }
     }
     if (entitySection) Object.assign(config, entitySection.value());
     return config;
@@ -1575,18 +1635,17 @@ function configureIntegration(integration) {
     try { const result = await api(`/api/integrations/${encodeURIComponent(integration.id)}/test`, { method: "POST" }); formNotice(feedback, result.message || result.error || (result.success ? "Connection successful." : "Could not connect."), result.success); }
     catch (error) { formNotice(feedback, errorText(error)); } finally { test.disabled = false; }
   }, "", "refresh");
-  form.append(feedback, el("div", { class: "modal-footer" }, test, save));
+  form.append(permissions, feedback, el("div", { class: "modal-footer" }, test, save));
   form.addEventListener("submit", async event => {
     event.preventDefault(); save.disabled = true; feedback.replaceChildren();
     try {
       const config = collectConfig();
       if (enabled.checked && requiredMissing.length) throw new Error(`Enable ${requiredMissing.map(item => item.name).join(", ")} before enabling ${integration.name}.`);
       await api(`/api/integrations/${encodeURIComponent(integration.id)}`, { method: "PUT", body: { enabled: enabled.checked, config } });
-      await refreshState(); modal.close(); await route(); toast(`${integration.name} settings saved.`);
+      await refreshState(); await route(); toast(`${integration.name} settings saved.`);
     } catch (error) { formNotice(feedback, errorText(error)); } finally { save.disabled = false; }
   });
-  openModal(integration.name, integration.description, form);
-  modal.classList.add("integration-settings-modal");
+  host.replaceChildren(form);
 }
 function makeEntitySelector(config) {
   const observed = new Set(config.observed || []),

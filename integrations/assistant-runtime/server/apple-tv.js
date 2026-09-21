@@ -79,6 +79,7 @@ export class AppleTvController {
   async status(id) {
     const state = await this.request('/api/status');
     const run = !id || state.run?.id === id ? state.run : state.history?.find(item => item.id === id);
+    if (!run && !id) return {id:null,status:'idle',goal:'',message:'No TV task is running.',model:state.model};
     if (!run) throw Error('That Apple TV task is no longer in the controller history.');
     return {...run, model:state.model};
   }

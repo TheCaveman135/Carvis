@@ -166,3 +166,17 @@ device behavior. No test routine actuated household devices. Live voice session
 configuration and API support were checked; an actual microphone/WebRTC call is
 still a separate hardware/browser check. The Physical Carvis Integration preserves
 the existing device server API; this release does not introduce ESP32 firmware.
+
+## Integration center update (0.3.0)
+
+All 14 built-in integrations have Home Assistant requirement labels, setup guidance,
+and native Overview, Controls, Settings, and Activity pages. The former workspace
+entry points redirect into Carvis. Camera feeds require Home Assistant; uploaded
+images do not. Apple TV AI and proactive home updates require Home Assistant.
+
+Validation: 428 automated tests pass, including dependency revocation, imported
+connection compatibility, authenticated control assets, and live microphone cleanup.
+All 42 Controls/Settings/Activity panels were checked with synthetic browser data;
+desktop grid and mobile layouts were inspected. Browser action checks verified that
+TV context targets the existing task and disabled reply options save as false.
+These checks do not establish physical microphone, speaker, or device behavior.

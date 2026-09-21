@@ -8,7 +8,7 @@ This integration connects Carvis to an **existing Apple TV AI Home Assistant add
 4. Under **Context**, optionally enter streaming-app or subtitle preferences. Under **Reply behavior**, choose **Silent successful navigation** and **Short power and playback replies**, then **Save changes**. Both switches default to on.
 5. Test the connection. HA's token must permit Supervisor API access. This requires a Home Assistant installation with Supervisor and the running controller add-on.
 
-All actions go through the controller. Navigation never falls back to direct Home Assistant services. The Home Assistant dry-run setting and per-entity guards still apply. Every action is a direct owner request; guarded targets ask for confirmation. A configured remote ID is needed for navigation transport, but it does not have to be exposed to Carvis when the selected TV media-player supplies permission. The selected target’s guard controls confirmation; choose its guard in **Home Assistant → Configure → Devices & permissions**.
+All actions go through the controller. Navigation never falls back to direct Home Assistant services. The Home Assistant dry-run setting and per-entity guards still apply. Every action is a direct owner request; guarded targets ask for confirmation. A configured remote ID is needed for navigation transport, but it does not have to be exposed to Carvis when the selected TV media-player supplies permission. The selected target’s guard controls confirmation; choose its guard in **Home Assistant → Settings → Devices & permissions**.
 
 Tools: `tv_start`, `tv_status`, `tv_context`, `tv_cancel`, `tv_button`, and `tv_command`. Starting a visual task is asynchronous. Carvis must check status before claiming it finished. `tv_context` adds guidance to the existing task at its next decision, preserving progress. For example, “Search Netflix instead” is a context update rather than a restart.
 
@@ -16,7 +16,7 @@ With **Assistant engine** enabled, recognized TV navigation uses the fast comman
 
 With only the core chatbot enabled, TV tools still work through the normal model loop. The same switches supply response preferences, but that path can produce model narration. Enable Assistant engine for the dedicated fast path and enforced navigation silence.
 
-Execution details remain available even for silent commands. **Open workspace** provides the integrated TV view when Assistant engine is enabled. Task history alone is not a live screen view; `completion_verified` is true only when the controller supplies explicit completion evidence.
+Execution details remain available even for silent commands. **Apple TV AI → Controls** provides the screen preview, live task progress, remote controls, and added context inside the main UI when Assistant engine is enabled. Task history alone is not a live screen view; `completion_verified` is true only when the controller supplies explicit completion evidence.
 
 ## Controller API contract
 

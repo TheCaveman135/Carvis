@@ -7,27 +7,27 @@ import appleTv from '../server/integrations/apple-tv.js';
 const source=readFileSync(new URL('../web/app.js',import.meta.url),'utf8');
 function helpers(integrations=[]){
   const context=vm.createContext({URL,state:{data:{integrations}},window:{location:{origin:'https://carvis.example'}}});
-  const metadata=source.slice(source.indexOf('const integrationCategories ='),source.indexOf('function integrationWorkspaceLink('));
+  const metadata=source.slice(source.indexOf('const integrationCategories ='),source.indexOf('function integrationCard('));
   const groups=source.slice(source.indexOf('function integrationFieldGroup('),source.indexOf('function integrationFieldValue('));
   const values=source.slice(source.indexOf('function integrationFieldValue('),source.indexOf('function configureIntegration('));
-  vm.runInContext(metadata+'\n'+groups+'\n'+values+'\nglobalThis.ui={integrationCategory,integrationDependencies,integrationWorkspaceUrl,integrationWorkspaceMissing,integrationMatchesSearch,integrationFieldGroup,integrationStatus,integrationFieldValue};',context);
+  vm.runInContext(metadata+'\n'+groups+'\n'+values+'\nglobalThis.ui={integrationCategory,integrationDependencies,integrationPanelUrl,integrationControlsMissing,integrationMatchesSearch,integrationFieldGroup,integrationStatus,integrationFieldValue};',context);
   return context.ui;
 }
 
-test('workspace links accept only this installation origin and reject embedded credentials',()=>{
+test('control modules accept only this installation origin and reject embedded credentials',()=>{
   const ui=helpers();
-  assert.equal(ui.integrationWorkspaceUrl('/integrations/assistant-engine/'),'/integrations/assistant-engine/');
-  assert.equal(ui.integrationWorkspaceUrl('https://carvis.example/integrations/assistant-engine/?view=protocols#active'),'/integrations/assistant-engine/?view=protocols#active');
-  for(const unsafe of ['https://another.example/panel','//another.example/panel','javascript:alert(1)','data:text/html,hi','http://carvis.example/panel','https://owner:secret@carvis.example/panel','https://carvis.example:8443/panel',''])assert.equal(ui.integrationWorkspaceUrl(unsafe),null,unsafe);
+  assert.equal(ui.integrationPanelUrl('/integrations/assistant-engine/'),'/integrations/assistant-engine/');
+  assert.equal(ui.integrationPanelUrl('https://carvis.example/integrations/assistant-engine/?view=protocols#active'),'/integrations/assistant-engine/?view=protocols#active');
+  for(const unsafe of ['https://another.example/panel','//another.example/panel','javascript:alert(1)','data:text/html,hi','http://carvis.example/panel','https://owner:secret@carvis.example/panel','https://carvis.example:8443/panel',''])assert.equal(ui.integrationPanelUrl(unsafe),null,unsafe);
 });
 
-test('catalog categories accept labels, canonical IDs and native integration fallbacks',()=>{
+test('catalog groups reflect Home Assistant requirements without conflating other dependencies',()=>{
   const ui=helpers();
-  assert.equal(ui.integrationCategory({id:'new-plugin',category:'Intelligence & routines'}),'intelligence-routines');
-  assert.equal(ui.integrationCategory({id:'voice-engine',category:'voice-display'}),'voice-display');
-  assert.equal(ui.integrationCategory({id:'home-assistant'}),'home-devices');
-  assert.equal(ui.integrationCategory({id:'even-realities'}),'voice-display');
-  assert.equal(ui.integrationCategory({id:'new-service'}),'connected-services');
+  assert.equal(ui.integrationCategory({id:'apple-tv',homeAssistant:{requirement:'required'}}),'required');
+  assert.equal(ui.integrationCategory({id:'cameras',homeAssistant:{requirement:'recommended'}}),'recommended');
+  assert.equal(ui.integrationCategory({id:'voice',dependsOn:['assistant-engine']}),'not-required');
+  assert.equal(ui.integrationCategory({id:'new-service',dependsOn:['home-assistant']}),'required');
+  assert.equal(ui.integrationCategory({id:'new-service'}),'not-required');
 });
 
 test('enabled state stays distinct from connectivity and dependency readiness',()=>{
@@ -72,10 +72,10 @@ test('setting searches find TV silence and both reply switches share an obvious 
   }
 });
 
-test('workspace links respect both capability and workspace dependencies after disable',()=>{
+test('control modules respect both capability and control dependencies after disable',()=>{
   const ui=helpers([{id:'assistant-engine',name:'Assistant engine',enabled:false}]);
-  assert.equal(ui.integrationWorkspaceMissing({dependsOn:['assistant-engine']})[0].name,'Assistant engine');
-  assert.equal(ui.integrationWorkspaceMissing({workspaceDependsOn:['assistant-engine']}).length,1);
-  assert.equal(ui.integrationWorkspaceMissing({dependsOn:['assistant-engine'],workspaceDependsOn:['assistant-engine']}).length,1);
-  assert.equal(ui.integrationWorkspaceMissing({dependsOn:[{id:'assistant-engine',optional:true}]}).length,0);
+  assert.equal(ui.integrationControlsMissing({dependsOn:['assistant-engine']})[0].name,'Assistant engine');
+  assert.equal(ui.integrationControlsMissing({controls:{dependsOn:['assistant-engine']}}).length,1);
+  assert.equal(ui.integrationControlsMissing({dependsOn:['assistant-engine'],controls:{dependsOn:['assistant-engine']}}).length,1);
+  assert.equal(ui.integrationControlsMissing({dependsOn:[{id:'assistant-engine',optional:true}]}).length,0);
 });

@@ -66,6 +66,10 @@ test('worker requires private IPC secret; parent owner session works and disable
   }
   assert.equal((await app.request('/integrations/assistant-engine/api/state')).status,401);
   assert.equal((await app.request('/integrations/assistant-engine/',{owner:true})).status,200);
+  for (const path of ['/integrations/assistant-engine/controls.js','/integrations/assistant-engine/live-panel.js']) {
+    assert.equal((await app.request(path)).status,401);
+    const module=await app.request(path,{owner:true});assert.equal(module.status,200);assert.match(module.headers.get('content-type'),/javascript/);
+  }
   const response=await app.request('/integrations/assistant-engine/api/state',{owner:true});
   assert.equal(response.status,200);
   const state=await response.text();

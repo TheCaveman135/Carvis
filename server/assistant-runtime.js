@@ -260,6 +260,10 @@ export class AssistantRuntime {
     await this.tail;
     if (!this.ready()) await this.refresh();
     const path = parsed.pathname.startsWith(prefix) ? parsed.pathname.slice(prefix.length) || '/' : parsed.pathname;
+    if (req.method === 'GET' && ['/', '/index.html', '/live.html'].includes(path)) {
+      res.writeHead(302, { Location: path === '/live.html' ? '/#integrations/voice/controls' : '/#integrations/assistant-engine/controls', 'Cache-Control': 'no-store' });
+      res.end(); return;
+    }
     if (path === '/api/config' && req.method === 'POST') {
       if (req.carvisAuthenticatedAs !== 'owner') throw Error('Only the owner can configure Integrations.');
       const patch = await readJson(req);

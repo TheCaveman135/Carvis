@@ -35,9 +35,15 @@ export default {
 
 Sanitizers run even when an integration has never been configured or has been disabled. In that case they receive `enabled:false` and `config:{}` with no credentials. They must tolerate this and remove any formerly accessible resource identifiers from recalled history. Sanitizers must not make network requests or activate capabilities. Before every model round, Carvis refreshes enabled tools and integration context and sanitizes the full history again.
 
-Optional metadata includes `category`, `dependsOn` (Integration IDs), and
-`workspaceUrl` for a management page. `workspaceDependsOn` controls availability
-of that page without disabling the Integration's independent tools. Required
+Optional metadata includes `dependsOn` (Integration IDs), `setupSteps` (plain
+language instructions), and `homeAssistant: {requirement, note}`. The requirement
+is `required`, `recommended`, or `not-required` and determines the card group.
+Use `controls: {module, dependsOn}` for a native management panel. `module` is a
+same-origin JavaScript URL exporting `mount(ui)`, which receives `root`,
+`integration`, `section` (`controls` or `activity`), an AbortSignal, UI helpers,
+and authenticated API access. Return a cleanup function; stop polling and close
+microphone sessions when its signal is aborted. Keep feature-specific controls
+in the Integration. External workspace links are no longer shown. Required
 dependencies must be enabled explicitly. The registry removes unavailable tools
 and context when an Integration or its dependency is disabled.
 
@@ -71,7 +77,7 @@ automatically.
 ## Setup fields and secrets
 
 Supported field types: `text`, `url`, `password`, `textarea`, `boolean`, `number`,
-`json`, `select`, `entities`. Set `group`, `description`, and `default` to make
+`json`, `string-array`, `room-notes`, `select`, `entities`. Set `group`, `description`, and `default` to make
 settings understandable and organized. Select options are `{value,label}`
 objects. Password values remain encrypted on the server, and the UI gets
 `has<FieldName>` only. Leaving a password input blank retains its existing value.

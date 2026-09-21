@@ -43,7 +43,7 @@ No API keys, home configuration, transcripts, personal memories, or device crede
 | Desktop bridge | Desktop agent queue/push delivery and acknowledgements | [Guide](docs/integrations-assistant.md#home-and-connected-services) |
 | Physical Carvis | Scoped device pairing, dock status, speech commands, and acknowledgements | [Guide](docs/integrations-assistant.md#voice-and-display) |
 
-The catalog groups all 14 integrations under **Home & devices**, **Voice & display**, **Intelligence & routines**, and **Connected services**. Search by name or setting. For TV silence, open **Apple TV AI → Configure → Reply behavior**; both reply switches default to on. [Find every control](docs/integrations-assistant.md#find-settings).
+The integration center groups all 14 integrations in a card grid: **HA required**, **HA recommended**, and **HA not required**. Open a card for **Overview**, **Controls**, **Settings**, and **Activity**, all inside the new UI. TV reply preferences are under **Apple TV AI → Settings → Reply behavior**. [Find every control](docs/integrations-assistant.md#find-settings-and-controls).
 
 Apple TV AI connects to an existing compatible controller installed as a Home Assistant add-on. This repository does not install that external controller or bundle its model/service credentials.
 

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
-function client({getUserMedia,authenticated=true,respond}={}) {
+function client({getUserMedia,authenticated=true,respond,panel=false}={}) {
  const nodes=new Map(),requests=[],sent=[],peers=[],timers=new Map();let timerId=0;
  const node=id=>{if(!nodes.has(id))nodes.set(id,{disabled:false,hidden:false,textContent:'',value:'',handlers:{},addEventListener(type,fn){this.handlers[type]=fn;},play:async()=>{}});return nodes.get(id);};
  const track={stopped:false,stop(){this.stopped=true;}};
@@ -13,15 +13,17 @@ function client({getUserMedia,authenticated=true,respond}={}) {
   addEventListener(){} addTrack(){} createDataChannel(){return this.events;}
   async createOffer(){return {sdp:'v=0\r\noffer'};} async setLocalDescription(value){this.localDescription=value;} async setRemoteDescription(){} close(){this.closed=true;}
  }
- const context={document:{querySelector:node},window:{isSecureContext:true,addEventListener(){}},navigator:{mediaDevices:{getUserMedia:getUserMedia || (async()=>stream)}},RTCPeerConnection:Peer,MediaStream:class{},setTimeout(fn,ms){timers.set(++timerId,{fn,ms});return timerId;},clearTimeout(id){timers.delete(id);},AbortSignal,Date,Map,JSON,Number,String,Promise,Error,
+ const context={document:{querySelector:node},window:{isSecureContext:true,addEventListener(){},removeEventListener(){}},navigator:{mediaDevices:{getUserMedia:getUserMedia || (async()=>stream)}},RTCPeerConnection:Peer,MediaStream:class{},setTimeout(fn,ms){timers.set(++timerId,{fn,ms});return timerId;},clearTimeout(id){timers.delete(id);},AbortSignal,Date,Map,JSON,Number,String,Promise,Error,
  fetch:async(path,options)=>{
   requests.push({path,body:options?.body?JSON.parse(options.body):null});
   const custom=respond?.(path,options);if(custom)return custom;
   if(path==='/integrations/assistant-engine/api/auth/login')authenticated=true;
   return {ok:true,status:200,json:async()=>path==='/integrations/assistant-engine/api/auth/status'?{configured:true,authenticated}:path==='/integrations/assistant-engine/api/live/status'?{available:true}:path==='/integrations/assistant-engine/api/live/session'?{session:{id:'live_test'},transport:{sdp:'answer'}}:path==='/integrations/assistant-engine/api/live/delegate'?{silent:true,reply:'Apple TV: button accepted.'}:{ok:true}};
  }};
- vm.runInNewContext(fs.readFileSync(new URL('../web/live.js',import.meta.url),'utf8'),context);
- return {node,requests,sent,peers,track,stream,timers,loaded:new Promise(r=>setImmediate(r))};
+ let dispose;
+ if(panel){vm.runInNewContext(fs.readFileSync(new URL('../web/live-panel.js',import.meta.url),'utf8').replace('export function mountLive','function mountLive'),context);dispose=context.mountLive(context.document);}
+ else vm.runInNewContext(fs.readFileSync(new URL('../web/live.js',import.meta.url),'utf8'),context);
+ return {node,requests,sent,peers,track,stream,timers,dispose,loaded:new Promise(r=>setImmediate(r))};
 }
 test('Live browser sends a delegation once, returns quiet results, and releases microphone on end',async()=>{
  const h=client();await h.loaded;await h.node('#start').handlers.click();const channel=h.peers[0].events;
@@ -80,3 +82,16 @@ test('A stalled microphone prompt times out and a late stream is stopped',async(
  release(h.stream);await attempt;
  assert.equal(h.track.stopped,true);assert.equal(h.peers.length,0);
 });
+
+ test('Leaving native voice controls closes the microphone, peer, and billed session',async()=>{
+ const h=client({panel:true});await h.loaded;await h.node('#start').handlers.click();h.dispose();
+ assert.equal(h.track.stopped,true);assert.equal(h.peers[0].closed,true);
+ assert.equal(h.sent.at(-1).type,'session.close');
+ assert.equal(h.requests.filter(r=>r.path.endsWith('/live/end')).length,1);
+ h.dispose();assert.equal(h.requests.filter(r=>r.path.endsWith('/live/end')).length,1);
+ });
+ test('Leaving native controls while microphone permission is pending stops a late stream',async()=>{
+ let release;const h=client({panel:true,getUserMedia:()=>new Promise(r=>{release=r;})});await h.loaded;
+ const attempt=h.node('#start').handlers.click();await new Promise(r=>setImmediate(r));h.dispose();release(h.stream);await attempt;
+ assert.equal(h.track.stopped,true);assert.equal(h.peers.length,0);
+ });

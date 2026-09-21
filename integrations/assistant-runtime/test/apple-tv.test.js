@@ -121,3 +121,9 @@ test('TV preview uses authenticated ingress and rejects non-image responses',asy
   await h.tv.start('Open the home screen');
   assert.equal(h.requests[2].body.goal,'Open the home screen');
  });
+
+test('a fresh controller has an idle state while a missing requested task remains an error',async()=>{
+  const h=fixture();h.tv.fetch=async()=>({ok:true,status:200,json:async()=>({run:null,history:[],model:'fixture'})});
+  assert.equal((await h.tv.status()).status,'idle');
+  await assert.rejects(()=>h.tv.status('missing-task'),/no longer/);
+});

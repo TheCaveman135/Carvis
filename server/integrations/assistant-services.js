@@ -1,5 +1,6 @@
 import { SECTION_OWNERS, sectionFields } from '../assistant-config.js';
 import { runtimeFor } from '../assistant-runtime.js';
+import { decorateAssistantIntegration } from './assistant-catalog.js';
 
 const descriptions = {
   'assistant-engine': ['Assistant engine', 'Conversation, fast commands, model roles, detailed execution traces, and coordination of your enabled Integrations.', 'Intelligence & routines'],
@@ -14,7 +15,6 @@ const descriptions = {
   desktop: ['Desktop bridge', 'Send requests to your desktop agent through its configured queue or push endpoint.', 'Connected services'],
   'physical-carvis': ['Physical Carvis', 'Pair a physical device, receive status reports, and deliver acknowledged commands and speech.', 'Voice & display'],
 };
-const workspaceTabs = { 'assistant-engine': 'carvis', voice: 'transcript', speech: 'settings', protocols: 'automations', proactivity: 'behavior', 'learned-memory': 'behavior', cameras: 'carvis', 'web-search': 'settings', atlas: 'settings', desktop: 'settings', 'physical-carvis': 'settings', 'home-assistant': 'entities', 'apple-tv': 'carvis', 'even-realities': 'carvis' };
 const password = (key, label, group = 'Credentials') => ({ key, label, type: 'password', group, description: 'Stored privately. Leave blank to keep the current value.' });
 function validateFields(fields, input = {}) {
   const output = { ...input };
@@ -27,7 +27,10 @@ function validateFields(fields, input = {}) {
       if (JSON.stringify(value).length > 100000) throw Error(`${field.label} is too large.`);
       if (field.key === 'models__providers' && Array.isArray(value) && value.some(p => Object.keys(p || {}).some(key => /^(apiKey|token|accessToken|password|secret)$/i.test(key))))
         throw Error('Use a provider API-key environment binding or the private credential fields, not inline secrets in provider JSON.');
-    } else if (field.type === 'boolean' && typeof value !== 'boolean') throw Error(`${field.label} must be on or off.`);
+    } else if (field.type === 'room-notes' && (!value || typeof value !== 'object' || Array.isArray(value) || Object.values(value).some(note => typeof note !== 'string'))) throw Error('Room notes must pair room names with text.');
+    else if (field.type === 'string-array' && (!Array.isArray(value) || value.some(item => typeof item !== 'string'))) throw Error(`${field.label} must contain one text value per line.`);
+    else if (field.type === 'select' && !field.options.some(option => option.value === value)) throw Error(`Choose a valid ${field.label.toLowerCase()}.`);
+    else if (field.type === 'boolean' && typeof value !== 'boolean') throw Error(`${field.label} must be on or off.`);
     else if (field.type === 'number' && (typeof value !== 'number' || !Number.isFinite(value))) throw Error(`${field.label} must be a number.`);
     else if (['text', 'textarea', 'password'].includes(field.type) && typeof value !== 'string') throw Error(`${field.label} must be text.`);
     output[field.key] = value;
@@ -43,7 +46,6 @@ export function registerAssistantServices(registry) {
     const module = {
       id, name, description, category, version: '1.0.0', icon: 'sparkles', fields,
       dependsOn: id === 'assistant-engine' ? [] : ['assistant-engine'],
-      workspaceUrl: `/integrations/assistant-engine/#${workspaceTabs[id]}`,
       permissions: id === 'assistant-engine' ? ['Coordinate enabled Integrations through their existing guards', 'Retain private execution traces and conversation context'] : [`Use ${name.toLowerCase()} only while enabled`, 'Keep existing selection and authorization requirements'],
       validateConfig: cfg => validateFields(fields, cfg),
       async test() { return runtime.status(); },
@@ -61,14 +63,13 @@ export function registerAssistantServices(registry) {
       authorizeDevice: (req, path) => runtime.authorizeDevice(req, path),
       rawRoute: (req, res, parsed) => runtime.proxy(req, res, parsed),
     });
+    decorateAssistantIntegration(module);
     registry.register(module);
   }
   for (const id of ['home-assistant', 'apple-tv', 'even-realities']) {
     const module = registry.modules.get(id);
     if (!module) continue;
     module.category = id === 'even-realities' ? 'Voice & display' : 'Home & devices';
-    module.workspaceUrl = `/integrations/assistant-engine/#${workspaceTabs[id]}`;
-    module.workspaceDependsOn = ['assistant-engine'];
     const extra = sectionFields(id).filter(f => !module.fields.some(old => old.key === f.key));
     if (id === 'home-assistant') extra.push(
       { key: 'areaNotes', label: 'Room and landmark context', type: 'json', group: 'Context', default: {}, description: 'Notes by room name. These help Carvis interpret your home and camera images.' },
@@ -76,7 +77,26 @@ export function registerAssistantServices(registry) {
     );
     module.fields.push(...extra);
     const validate = module.validateConfig;
-    module.validateConfig = config => ({ ...validateFields(extra, config), ...validate(config) });
+    module.validateConfig = config => {
+      let candidate = config, importedUrl;
+      if (id === 'even-realities' && runtime.enabled()) {
+        const saved = registry.store.config.integrations[id]?.config;
+        const original = registry.store.plugin('assistant-engine').get('originalLegacyConfig', {});
+        // An unchanged, explicitly imported companion address must not prevent
+        // saving display preferences. New or changed destinations still pass
+        // the normal HTTPS validator; this never changes the device endpoint.
+        if (config.publicBaseUrl && config.publicBaseUrl === saved?.publicBaseUrl) {
+          const url = new URL(config.publicBaseUrl);
+          if (url.protocol === 'http:' && url.hostname === original.server?.host && Number(url.port || 80) === Number(original.server?.port)) {
+            importedUrl = config.publicBaseUrl;
+            const validationUrl = new URL(url); validationUrl.protocol = 'https:';
+            candidate = { ...config, publicBaseUrl: validationUrl.toString() };
+          }
+        }
+      }
+      return { ...validateFields(extra, config), ...validate(candidate), ...(importedUrl ? { publicBaseUrl: importedUrl } : {}) };
+    };
+    decorateAssistantIntegration(module);
     if (id === 'home-assistant') {
       const tools = module.tools;
       module.tools = async ctx => (await tools(ctx)).map(tool => {
