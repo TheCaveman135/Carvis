@@ -1973,89 +1973,21 @@ function renderSettings(main) {
     saveModel,
   );
   if (model.hasApiKey || model.provider === "ollama") queueMicrotask(scheduleModels);
-  const memoryInput = input("memory", "", "text", {
-    required: true,
-    maxlength: 2000,
-    placeholder: "For example: I prefer short answers with practical examples.",
-    "aria-label": "New memory",
-  });
-  const memoryList = el("div", { class: "memory-list" });
-  const memoryFeedback = el("div");
-  const renderMemories = () => {
-    memoryList.replaceChildren();
-    if (!state.data.memory?.length)
-      memoryList.append(
-        el(
-          "p",
-          { class: "small muted" },
-          "A fresh start. Add only what you’d like Carvis to remember.",
-        ),
-      );
-    for (const memory of state.data.memory || [])
-      memoryList.append(
-        el(
-          "div",
-          { class: "memory-item" },
-          el("p", {}, memory.text),
-          iconButton("Delete this memory", "trash", () =>
-            act(async () => {
-              await api(`/api/memory/${encodeURIComponent(memory.id)}`, {
-                method: "DELETE",
-              });
-              await refreshState();
-              renderMemories();
-              toast("Memory removed.");
-            }),
-          ),
-        ),
-      );
-  };
-  renderMemories();
-  const memorySubmit = el(
-    "button",
-    { type: "submit", class: "button" },
-    icon("plus"),
-    "Add memory",
-  );
-  const memoryForm = el(
-    "form",
-    {
-      class: "memory-form",
-      onsubmit: async (event) => {
-        event.preventDefault();
-        memorySubmit.disabled = true;
-        try {
-          await api("/api/memory", {
-            method: "POST",
-            body: { text: memoryInput.value.trim() },
-          });
-          memoryInput.value = "";
-          await refreshState();
-          renderMemories();
-          memoryFeedback.replaceChildren();
-          toast("Memory added.");
-        } catch (error) {
-          formNotice(memoryFeedback, errorText(error));
-        } finally {
-          memorySubmit.disabled = false;
-        }
-      },
-    },
-    memoryInput,
-    memorySubmit,
-  );
   const memoryCard = el(
     "section",
     { class: "settings-card full" },
-    el("h2", {}, "Things worth remembering"),
+    el("h2", {}, "Memory"),
     el(
       "p",
       {},
-      "Keep useful context across conversations. Review, add, or remove it whenever you like.",
+      "Let Carvis remember preferences and useful context. Set up and manage this feature in the Memory & patterns integration.",
     ),
-    memoryList,
-    memoryForm,
-    memoryFeedback,
+    el(
+      "a",
+      { class: "button", href: "#integrations/learned-memory/settings" },
+      "Enable Memory Integration",
+      icon("arrow"),
+    ),
   );
   main.replaceChildren(
     el(
