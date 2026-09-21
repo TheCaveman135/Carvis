@@ -1731,6 +1731,18 @@ function renderSettings(main) {
     },
     profile.personality || "",
   );
+  const personalityPresets = [
+    ['friendly', 'Friendly companion', 'Be warm, approachable, and conversational. Use everyday language, show interest without flattery, and keep replies concise unless I ask for detail. Ask a brief clarifying question when needed.'],
+    ['concise', 'Straight to the point', 'Be direct, practical, and brief. Lead with the answer or outcome. Skip filler and unnecessary acknowledgements. Use short steps when explaining a task, and expand only when I ask.'],
+    ['professional', 'Professional assistant', 'Be polished, organized, and dependable. Use a calm, professional tone and clear explanations. Summarize decisions, highlight relevant tradeoffs, and make next steps easy to follow.'],
+    ['coach', 'Patient coach', 'Be patient, encouraging, and practical. Break unfamiliar tasks into manageable steps. Explain the why when it helps, adapt to my experience, and ask useful questions without turning every reply into a lesson.'],
+    ['creative', 'Creative collaborator', 'Be curious, imaginative, and lightly playful. Help me explore ideas with concrete examples and useful alternatives. Offer your own thoughtful opinion, keep suggestions grounded, and avoid overwhelming me with options.'],
+    ['jarvis', 'Jarvis', 'Speak like a composed, highly capable British personal assistant: articulate, discreet, observant, and quietly witty. Use understated dry humour sparingly. Keep routine acknowledgements short and precise; explain complex matters clearly when asked. Anticipate useful next steps and offer them tactfully, without being pushy. Stay calm when things go wrong, state what happened plainly, and suggest a practical remedy. Avoid theatrical speeches, excessive deference, and repeatedly calling me sir. Never claim an action succeeded until its result confirms it.'],
+  ];
+  const preset = el('select', {name:'personalityPreset'}, el('option',{value:''},'Custom personality'), ...personalityPresets.map(([value,label])=>el('option',{value},label)));
+  const syncPreset = () => { preset.value = personalityPresets.find(([, ,text])=>text===personality.value)?.[0] || ''; };
+  preset.addEventListener('change',()=>{ const choice=personalityPresets.find(([id])=>id===preset.value); if(choice)personality.value=choice[2]; });
+  personality.addEventListener('input',syncPreset);syncPreset();
   const profileFeedback = el("div");
   const saveProfile = el(
     "button",
@@ -1776,6 +1788,7 @@ function renderSettings(main) {
       field("Your name", display),
       field("Assistant name", assistant),
     ),
+    field("Personality preset", preset, "Choose a starting point, then edit it below. Save personality to apply."),
     field(
       "Personality & preferences",
       personality,
