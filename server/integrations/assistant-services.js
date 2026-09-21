@@ -3,7 +3,7 @@ import { runtimeFor } from '../assistant-runtime.js';
 import { decorateAssistantIntegration } from './assistant-catalog.js';
 
 const descriptions = {
-  'assistant-engine': ['Assistant engine', 'Conversation, fast commands, model roles, detailed execution traces, and coordination of your enabled Integrations.', 'Intelligence & routines'],
+  'assistant-engine': ['Advanced assistant', 'Conversation, fast commands, model roles, detailed execution traces, and coordination of your enabled Integrations.', 'Intelligence & routines'],
   voice: ['Voice conversation', 'Speech recognition, contextual follow-ups, acknowledgements, and live voice chat.', 'Voice & display'],
   speech: ['Speech output', 'Read replies through your configured phone, Home Assistant speaker, or physical Carvis.', 'Voice & display'],
   protocols: ['Protocols, timers & alarms', 'Create and manage deterministic routines, timers, alarms, variables, and their execution history.', 'Intelligence & routines'],

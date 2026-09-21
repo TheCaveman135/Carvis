@@ -172,7 +172,7 @@ export class AssistantRuntime {
   async close() { this.closed = true; await this.tail.catch(() => {}); await this.stopWorker(); }
   async call(method, args = {}, { signal } = {}) {
     signal?.throwIfAborted();
-    if (!this.enabled()) throw Error('Enable the Assistant engine Integration.');
+    if (!this.enabled()) throw Error('Enable the Advanced assistant Integration.');
     await this.tail;
     if (!this.ready()) await this.refresh();
     signal?.throwIfAborted();
