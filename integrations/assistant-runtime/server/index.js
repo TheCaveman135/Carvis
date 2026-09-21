@@ -604,7 +604,8 @@ const routes = {
     const text = heard.text;
     if (!text) return sendJson(res, 200, { ok: true, outcome: 'ignored', reason: 'nothing said', text: '' });
 
-    const result = await voice.ingest(text, { source: 'glasses', confidence: heard.confidence });
+    const source = new URL(req.url, 'http://localhost').searchParams.get('source') === 'browser' ? 'browser' : 'glasses';
+    const result = await voice.ingest(text, { source, confidence: heard.confidence });
     sendJson(res, 200, {
       ok: true,
       text,

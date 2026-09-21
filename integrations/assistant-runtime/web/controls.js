@@ -181,7 +181,8 @@ export async function mount(ui) {
       })),card('Room and object context','Add descriptions so Carvis recognizes furniture and rooms correctly.',el('a',{class:'button compact',href:'#integrations/home-assistant/settings'},'Edit room notes')));
   }
   async function voice(snapshot) {
-    content.append(card('Voice input','Deepgram transcribes audio from your paired microphone device. Carvis processes the text using your normal assistant model.',el('p',{},'Use Spoken replies to choose where Carvis answers aloud.')));
+    const microphone=el('div');content.append(card('Browser microphone','Record a request using a microphone connected to this browser. Deepgram transcribes it for the normal Carvis voice flow.',microphone));
+    const {mountMic}=await import('./mic-panel.js');if(signal.aborted)return;dispose=mountMic(microphone,{el,field,signal});
     transcript(snapshot);
   }
   function home(snapshot) {
