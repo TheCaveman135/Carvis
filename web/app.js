@@ -1596,6 +1596,23 @@ function configureIntegration(integration, host, {inline = false} = {}) {
     else if (["entities", "string-array", "string_array"].includes(f.type)) control = el("textarea", { name: f.key, rows: "4", placeholder: f.placeholder || "One item per line" }, Array.isArray(value) ? value.join("\n") : value ?? "");
     else if (["textarea", "json"].includes(f.type)) control = el("textarea", { name: f.key, rows: f.type === "json" ? "7" : "4", class: f.type === "json" ? "json-input" : "", spellcheck: f.type === "json" ? "false" : "true", placeholder: f.placeholder || (f.type === "json" ? "[] or {}" : "") }, typeof value === "object" || f.type === "json" && value !== undefined && typeof value !== "string" ? JSON.stringify(value, null, 2) : value ?? "");
     else control = input(f.key, f.type === "password" ? "" : value ?? "", ["password", "url", "number"].includes(f.type) ? f.type : "text", { autocomplete: f.type === "password" ? "new-password" : "off", min: f.min ?? f.minimum, max: f.max ?? f.maximum, step: f.type === "number" ? f.step ?? "any" : undefined, placeholder: f.type === "password" ? cfg[`has${f.key[0].toUpperCase()}${f.key.slice(1)}`] ? "Saved · leave blank to keep" : "Enter your secret" : f.placeholder || "" });
+    if(f.key==='model' || f.key==='speechModel' || f.key.endsWith('__model')){
+      control=el('select',{name:f.key},el('option',{value:''},'Service default / not set'),...(value?[el('option',{value,selected:true},`${value} (saved)`)]:[]));
+      let requestVersion=0;
+      control.loadModels=async()=>{
+        const version=++requestVersion;
+        const providerKey=f.key.replace(/__model$/,'__provider');
+        try {
+          const result=await api('/api/integration-models',{method:'POST',body:{integrationId:integration.id,field:f.key,providerId:values[providerKey]?.control.value}});
+          if(version!==requestVersion)return;
+          const current=control.value;const choices=[...new Set([...(current?[current]:[]),...result.models])];
+          control.replaceChildren(el('option',{value:''},'Service default / not set'),...choices.map(id=>el('option',{value:id},result.models.includes(id)?id:`${id} (saved)`)));control.value=current;
+          control.title=result.note || `${result.models.length} models available`;
+          control.parentElement?.querySelector('.model-discovery-error')?.remove();
+        }catch(error){if(version!==requestVersion)return;control.title=errorText(error);if(control.parentElement){let note=control.parentElement.querySelector('.model-discovery-error');if(!note){note=el('span',{class:'field-description model-discovery-error',role:'status'});control.parentElement.append(note);}note.textContent=errorText(error);}}
+      };
+      queueMicrotask(()=>void control.loadModels());
+    }
     const sharedKeyId = {openaiKey:'openai',anthropicKey:'anthropic',stt__deepgramKey:'deepgram',stt__assemblyaiKey:'assemblyai',search__geminiKey:'gemini'}[f.key];
     if(sharedKeyId && f.type==='password' && !cfg[`has${f.key[0].toUpperCase()}${f.key.slice(1)}`]) control.placeholder=state.data.apiKeys?.[sharedKeyId]?.saved ? 'Using global key · optional override' : 'Optional override · set shared key in Settings';
     let hasSecret = Boolean(cfg[`has${f.key[0].toUpperCase()}${f.key.slice(1)}`]);
@@ -1694,6 +1711,7 @@ function configureIntegration(integration, host, {inline = false} = {}) {
         if(entry?.field.type==='password' && value && entry.control.value===value){entry.control.value='';entry.control.required=false;entry.control.placeholder='Saved · leave blank to keep';baseline[key]='';}
       }
       await refreshState();saveStatus.textContent='Saved';
+      if(Object.keys(patch).some(key=>/provider|engine|baseUrl|BaseUrl|Key|key/.test(key)))for(const entry of Object.values(values))entry.control.loadModels?.();
     }catch(error){saveStatus.textContent='Not saved — retry';formNotice(feedback,errorText(error));}
     finally {saving=false;save.disabled=false;if(queued){queued=false;void persist();}}
   };
@@ -1794,8 +1812,6 @@ function renderModelRouter() {
     el("p",{},"Choose which AI models your enabled integrations use. Save each integration separately. Model changes here also appear in its settings."));
   const entries = modelRouterEntries(state.data.integrations || []);
   if (!entries.length) card.append(el("p",{class:"small muted"},"Enable an integration that uses AI to see its model controls here."),el("a",{class:"button quiet",href:"#integrations"},"Browse integrations"));
-  let catalog;
-  const primaryModels = () => catalog ||= api('/api/models',{method:'POST',body:{}});
   const engine = (state.data.integrations || []).find(i=>i.id==='assistant-engine');
   const providers = engine?.config?.models__providers || engine?.fields?.find(f=>f.key==='models__providers')?.default || [];
   for (const {integration,fields,note} of entries) {
@@ -1810,21 +1826,21 @@ function renderModelRouter() {
       const label=definition.label || definition.key;
       const select=el('select',{'aria-label':`${integration.name}: ${label}`});
       const custom=input(definition.key,current,'text',{maxlength:120,placeholder:'Model ID from this service'});
-      const customField=field('Custom model ID',custom);
+      const customField=field('Custom model ID',custom);customField.hidden=true;
       const status=el('p',{class:'small muted',role:'status'});
       let revision=0;
       const populate=(models=[])=>{
         const value=custom.value;
-        select.replaceChildren(el('option',{value:''},'Service default / not set'),...models.map(id=>el('option',{value:id},id)),el('option',{value:'__custom'},'Enter a custom model ID…'));
-        select.value=models.includes(value)?value:value?'__custom':'';customField.hidden=select.value!=='__custom';
+        const choices=[...new Set([...(value?[value]:[]),...models])];
+        select.replaceChildren(el('option',{value:''},'Service default / not set'),...choices.map(id=>el('option',{value:id},models.includes(id)?id:`${id} (saved)`)));
+        select.value=value;customField.hidden=true;
       };
-      select.addEventListener('change',()=>{customField.hidden=select.value!=='__custom';if(select.value!=='__custom')custom.value=select.value;});
+      select.addEventListener('change',()=>{custom.value=select.value;});
       let providerSelect;
       const discover=async()=>{
         const version=++revision;populate();
-        if(providerSelect?.value!=='carvis-primary') {status.textContent='Use a model supported by this service. Its connection and credentials are managed in integration settings.';return;}
-        status.textContent='Loading models from your saved main provider…';
-        try {const result=await primaryModels();if(version!==revision)return;populate(result.models);status.textContent='Choose a model suitable for this task; image understanding needs a vision model.';}
+        status.textContent='Loading available models…';
+        try {const result=await api('/api/integration-models',{method:'POST',body:{integrationId:integration.id,field:definition.key,providerId:providerSelect?.value}});if(version!==revision)return;populate(result.models);status.textContent=result.note || `${result.models.length} available models. Choose one suitable for this task.`;}
         catch(error){if(version===revision)status.textContent=errorText(error);}
       };
       if(providerField){

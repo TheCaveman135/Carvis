@@ -1,3 +1,4 @@
+import { integrationModels } from './integration-models.js';
 import { publicGlobalKeys, updateGlobalKeys, resolvedMainModel } from './global-keys.js';
 import http from "node:http";
 import { discoverModels } from "./model-catalog.js";
@@ -242,6 +243,10 @@ export async function createApp({
           memory: store.data.memory,
           version: VERSION,
         });
+      if(path==='/api/integration-models' && req.method==='POST') {
+        if(!user)throw fail('Sign in to Carvis.',401);
+        return json(res,200,await integrationModels(await body(req),store,registry,fetcher));
+      }
       if (path === "/api/models" && req.method === "POST") {
         if (!user) throw fail("Sign in to Carvis.", 401);
         return json(res, 200, await discoverModels(await body(req), resolvedMainModel(store.config), fetcher));

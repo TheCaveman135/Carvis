@@ -10,7 +10,7 @@ const shared = {
 export function modelRouterEntries(integrations) {
   return integrations.filter(i => i.enabled).map(integration => ({
     integration,
-    fields: (integration.fields || []).filter(f => f.type !== 'password' && (f.key === 'model' || f.key.endsWith('__model'))),
+    fields: (integration.fields || []).filter(f => f.type !== 'password' && (f.key === 'speechModel' || f.key === 'model' || f.key.endsWith('__model'))),
     note: shared[integration.id] || '',
   })).filter(entry => entry.fields.length || entry.note);
 }
