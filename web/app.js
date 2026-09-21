@@ -1,4 +1,5 @@
 "use strict";
+import { modelRouterEntries } from "./model-router.js";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const app = $("#app");
@@ -1708,6 +1709,73 @@ function makeEntitySelector(config) {
   return {node:el('section',{class:'entity-section entity-manager'},el('div',{class:'entity-manager-title'},icon('home'),el('div',{},el('h3',{},'Entity management'),el('p',{class:'small muted'},'Choose what Carvis can see and control. Changes apply when you save.')),load),rooms,el('div',{class:'entity-filterbar'},search,type,el('label',{class:'check-label'},only,'Show selected only')),feedback,el('div',{class:'entity-table-heading'},el('div',{},heading,count),el('div',{class:'action-row'},selectAll,bulk)),list,el('p',{class:'small muted'},'Rooms come from Home Assistant. State is a read-only snapshot. Unobserved entities remain hidden from Carvis. Guards keep the existing Auto, Standard, and Require confirmation behavior.')),value:()=>({observed:[...observed],controlled:[...controlled],guards})};
 }
 
+function renderModelRouter() {
+  const card = el("section", {class:"settings-card full"},
+    el("h2",{},"Model Router"),
+    el("p",{},"Choose which AI models your enabled integrations use. Save each integration separately. Model changes here also appear in its settings."));
+  const entries = modelRouterEntries(state.data.integrations || []);
+  if (!entries.length) card.append(el("p",{class:"small muted"},"Enable an integration that uses AI to see its model controls here."),el("a",{class:"button quiet",href:"#integrations"},"Browse integrations"));
+  let catalog;
+  const primaryModels = () => catalog ||= api('/api/models',{method:'POST',body:{}});
+  const engine = (state.data.integrations || []).find(i=>i.id==='assistant-engine');
+  const providers = engine?.config?.models__providers || engine?.fields?.find(f=>f.key==='models__providers')?.default || [];
+  for (const {integration,fields,note} of entries) {
+    const cfg=integration.config || {}, updates=[], feedback=el('div');
+    const form=el('form',{class:'control-card'},el('h3',{},integration.name));
+    if(note)form.append(el('p',{class:'small muted'},note));
+    for (const definition of fields) {
+      const providerKey=definition.key.startsWith('models__roles__')?definition.key.replace(/__model$/,'__provider'):null;
+      const providerField=integration.fields.find(f=>f.key===providerKey);
+      const savedProvider=providerField ? (cfg[providerKey] ?? providerField.default) : null;
+      const current=cfg[definition.key] ?? definition.default ?? '';
+      const label=definition.label || definition.key;
+      const select=el('select',{'aria-label':`${integration.name}: ${label}`});
+      const custom=input(definition.key,current,'text',{maxlength:120,placeholder:'Model ID from this service'});
+      const customField=field('Custom model ID',custom);
+      const status=el('p',{class:'small muted',role:'status'});
+      let revision=0;
+      const populate=(models=[])=>{
+        const value=custom.value;
+        select.replaceChildren(el('option',{value:''},'Service default / not set'),...models.map(id=>el('option',{value:id},id)),el('option',{value:'__custom'},'Enter a custom model ID…'));
+        select.value=models.includes(value)?value:value?'__custom':'';customField.hidden=select.value!=='__custom';
+      };
+      select.addEventListener('change',()=>{customField.hidden=select.value!=='__custom';if(select.value!=='__custom')custom.value=select.value;});
+      let providerSelect;
+      const discover=async()=>{
+        const version=++revision;populate();
+        if(providerSelect?.value!=='carvis-primary') {status.textContent='Use a model supported by this service. Its connection and credentials are managed in integration settings.';return;}
+        status.textContent='Loading models from your saved main provider…';
+        try {const result=await primaryModels();if(version!==revision)return;populate(result.models);status.textContent='Choose a model suitable for this task; image understanding needs a vision model.';}
+        catch(error){if(version===revision)status.textContent=errorText(error);}
+      };
+      if(providerField){
+        const options=new Map([['carvis-primary','Main provider (from Carvis Settings)'],...providers.map(p=>[p.id,p.label || p.id])]);
+        if(savedProvider&&!options.has(savedProvider))options.set(savedProvider,savedProvider);
+        providerSelect=el('select',{'aria-label':`${integration.name}: ${label} provider`},...Array.from(options,([value,text])=>el('option',{value},text)));
+        providerSelect.value=savedProvider || 'carvis-primary';
+        providerSelect.addEventListener('change',()=>{custom.value='';void discover();});
+        form.append(field(label.replace(/model$/i,'provider'),providerSelect));
+      }
+      form.append(field(label,select),customField,status);
+      updates.push(()=>({...{[definition.key]:custom.value.trim()},...(providerSelect?{[providerKey]:providerSelect.value}:{})}));
+      void discover();
+    }
+    form.append(el('a',{href:`#integrations/${integration.id}/settings`,class:'small'},'Connection and advanced settings'));
+    if(fields.length){
+      const save=el('button',{type:'submit',class:'button'},'Save models');form.append(feedback,save);
+      form.addEventListener('submit',async event=>{
+        event.preventDefault();save.disabled=true;
+        try {
+          await api(`/api/integrations/${encodeURIComponent(integration.id)}`,{method:'PUT',body:{config:Object.assign({},...updates.map(read=>read()))}});
+          await refreshState();formNotice(feedback,'Model routing saved.',true);
+        }catch(error){formNotice(feedback,errorText(error));}finally{save.disabled=false;}
+      });
+    }else form.addEventListener('submit',event=>event.preventDefault());
+    card.append(form);
+  }
+  return card;
+}
+
 function renderSettings(main) {
   const profile = state.data.profile || {},
     model = state.data.model || {};
@@ -1998,7 +2066,7 @@ function renderSettings(main) {
         "Settle in.",
         "Choose how Carvis thinks, how it talks, and what it remembers about you.",
       ),
-      el("div", { class: "settings-grid" }, profileForm, modelForm, memoryCard),
+      el("div", { class: "settings-grid" }, profileForm, modelForm, renderModelRouter(), memoryCard),
     ),
   );
 }

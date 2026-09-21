@@ -50,3 +50,18 @@ test('HA-dependent services stop when HA is disabled without losing their saved 
   entries['home-assistant'].enabled=true;
   assert.equal(projectRuntimeConfig(store).integrations['apple-tv'],true);
 });
+
+test('router selections reach each runtime model role using the saved main provider',()=>{
+ const store=fixture(structuredClone(DEFAULTS));
+ store.config.model={provider:'compatible',baseUrl:'https://models.example/v1',model:'main-model'};
+ const roles={cameras:'vision',voice:'voice_triage','learned-memory':'rule',proactivity:'triage','assistant-engine':'chat'};
+ for(const [id,role] of Object.entries(roles)){
+   Object.assign(store.config.integrations[id].config,{[`models__roles__${role}__model`]:`${role}-model`,[`models__roles__${role}__provider`]:'carvis-primary'});
+ }
+ const projected=projectRuntimeConfig(store);
+ for(const role of Object.values(roles)){
+   assert.equal(projected.models.roles[role].model,`${role}-model`);
+   assert.equal(projected.models.roles[role].provider,'carvis-primary');
+ }
+ assert.equal(projected.models.providers.find(p=>p.id==='carvis-primary').baseUrl,'https://models.example/v1');
+});
