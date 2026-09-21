@@ -450,6 +450,7 @@ function renderShell() {
     { class: "nav", "aria-label": "Main navigation" },
     ...[
       ["chat", "Conversations", "chat"],
+      ...(integrations.some(i=>i.id==='voice'&&i.enabled)?[["voice-conversations","Voice Conversations","chat"]]:[]),
       ["integrations", "Integrations", "grid"],
       ["settings", "Settings", "settings"],
     ].map(([id, label, symbol]) =>
@@ -478,7 +479,7 @@ function renderShell() {
     { class: "history" },
     el("div", { class: "section-label" }, "RECENT CONVERSATIONS"),
   );
-  const conversations = state.data.conversations || [];
+  const conversations = (state.data.conversations || []).filter(c=>c.channel!=="voice");
   if (!conversations.length)
     history.append(
       el(
@@ -565,7 +566,7 @@ function renderShell() {
       ),
     ),
   );
-  const title =
+  const title = state.page === "voice-conversations" ? "Voice Conversations" :
     state.page === "integrations"
       ? "Integrations"
       : state.page === "settings"
@@ -630,7 +631,7 @@ async function route() {
   state.integrationCleanup?.(); state.integrationCleanup = null;
   const version = ++state.navVersion;
   const [page, encodedId, section] = location.hash.replace(/^#/, "").split("/");
-  state.page = ["integrations", "settings"].includes(page) ? page : "chat";
+  state.page = ["integrations", "settings", "voice-conversations"].includes(page) ? page : "chat";
   let requestedId = null;
   try {
     requestedId = encodedId ? decodeURIComponent(encodedId) : null;
@@ -661,6 +662,7 @@ async function route() {
     else renderIntegrations(main);
   }
   else if (state.page === "settings") renderSettings(main);
+  else if(state.page === "voice-conversations") renderVoiceConversations(main);
   else renderChat(main);
 }
 window.addEventListener("hashchange", () => act(route));
@@ -2194,3 +2196,28 @@ function renderSettings(main) {
 }
 
 boot();
+
+function renderVoiceConversations(main){
+  const list=el('div',{class:'voice-history-list'}),messages=el('div',{class:'voice-history-messages','aria-live':'polite'});
+  let selected=null,disposed=false,busy=false,last='';
+  main.append(el('section',{class:'voice-history-page'},el('h1',{},'Voice Conversations'),el('p',{class:'muted'},'Your spoken requests and Carvis’s replies. Updates automatically; a new conversation starts after 10 minutes of quiet.'),el('div',{class:'voice-history'},list,messages)));
+  const render=async()=>{
+    if(disposed||busy)return;busy=true;
+    try{
+      const result=await api('/api/voice-conversations');if(disposed)return;
+      const conversations=result.conversations;
+      if(!conversations.some(c=>c.id===selected))selected=conversations[0]?.id;
+      const signature=JSON.stringify([selected,conversations]);if(signature===last)return;last=signature;
+      list.replaceChildren(...conversations.map(c=>button(c.title,()=>{selected=c.id;last='';void render();},c.id===selected?'primary':'quiet')));
+      const current=conversations.find(c=>c.id===selected);
+      if(!current){messages.replaceChildren(el('p',{class:'muted'},'No voice conversations yet. Choose a microphone and unmute it in Voice input & chat.'));return;}
+      const nearBottom=messages.scrollHeight-messages.scrollTop-messages.clientHeight<100;
+      messages.replaceChildren(el('div',{class:'voice-history-header'},el('h2',{},current.title),button('Delete',async()=>{if(!confirm('Delete this voice conversation?'))return;await api(`/api/conversations/${encodeURIComponent(current.id)}`,{method:'DELETE'});last='';await render();},'quiet')),
+        ...current.messages.map(m=>el('article',{class:`voice-history-message ${m.role}`},el('strong',{},m.role==='user'?'You':'Carvis'),el('small',{class:'muted'},new Date(m.createdAt).toLocaleTimeString()),el('p',{style:'white-space:pre-wrap'},m.content),m.voiceStatus?el('small',{class:'muted'},m.voiceStatus):null)));
+      if(nearBottom)messages.scrollTop=messages.scrollHeight;
+    }catch(error){if(!disposed)messages.replaceChildren(el('p',{role:'status'},errorText(error)));}
+    finally{busy=false;}
+  };
+  void render();const timer=setInterval(()=>void render(),2000);
+  state.integrationCleanup=()=>{disposed=true;clearInterval(timer);};
+}

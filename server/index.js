@@ -231,6 +231,10 @@ export async function createApp({
           { success: true },
           { "Set-Cookie": clearSessionCookie() },
         );
+      if(path === '/api/voice-conversations' && req.method === 'GET'){
+        if(!user)throw fail('Sign in to Carvis.',401);
+        return json(res,200,{conversations:store.data.conversations.filter(c=>c.channel==='voice').sort((a,b)=>b.updatedAt-a.updatedAt)});
+      }
       if (path === "/api/state" && req.method === "GET")
         return json(res, 200, {
           profile: store.config.profile,

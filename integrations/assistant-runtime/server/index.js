@@ -1,3 +1,4 @@
+import {voiceReply} from './voice-events.js';
 import { HostMicrophone, speakLocal, stopLocalPlayback } from './host-audio.js';
 import {IntegrationBridge} from './integration-bridge.js';
 import {enabled, effectiveConfig, toolFeature, routeFeature, paused} from './features.js';
@@ -72,7 +73,7 @@ const physicalCarvis = new PhysicalCarvis({
 const phoneSpeaker = new PhoneSpeaker();
 let hostMicrophone;
 const voiceOutput = new VoiceOutput({ getConfig: loadConfig, ha, physicalCarvis, phoneSpeaker,localSpeaker:(text,device)=>speakLocal(text,device,{onStart:()=>{if(hostMicrophone)hostMicrophone.speakingOutput=true;},onEnd:()=>{setTimeout(()=>{if(hostMicrophone)hostMicrophone.speakingOutput=false;},500);}}) });
-const feed = new Feed(loadConfig, { onEntry: (entry) => {process.send?.({type:"reply",entry});return enabled(loadConfig(),"speech") ? voiceOutput.speakReply(entry) : undefined;} });
+const feed = new Feed(loadConfig, { onEntry: (entry) => {voiceReply(entry);process.send?.({type:"reply",entry});return enabled(loadConfig(),"speech") ? voiceOutput.speakReply(entry) : undefined;} });
 const glassesDisplay = new GlassesDisplay({
   onChange: (state) => broadcast({ type: 'glasses-display', glassesDisplay: state }),
 });

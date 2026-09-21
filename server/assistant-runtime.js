@@ -1,3 +1,4 @@
+import {recordVoiceEvent} from './integrations/voice-history.js';
 import { globalKeys } from './global-keys.js';
 import { fork } from 'node:child_process';
 import { mkdirSync, writeFileSync, renameSync, openSync, closeSync } from 'node:fs';
@@ -90,6 +91,8 @@ export class AssistantRuntime {
         if (message?.type === 'ready') {
           ready = true; clearTimeout(timeout); this.port = message.port;
           this.registry.health.set('assistant-engine', 'connected'); resolve();
+        } else if (message?.type === 'voice_history') {
+          recordVoiceEvent(this.store,message);
         } else if (message?.type === 'config_changed' && message.config) {
           this.persistRuntimeConfig(message.config);
         } else if (message?.type === 'integration_call') {

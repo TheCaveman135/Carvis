@@ -1,3 +1,4 @@
+import {voiceTurn} from './voice-events.js';
 import { followupContext } from './followup-context.js';
 /**
  * The voice pipeline: what happens to a sentence between your mouth and the
@@ -422,7 +423,12 @@ export class Voice {
    * One finalised utterance. Returns what Carvis decided, which the glasses use
    * to show "heard / thinking / done" without a second round trip.
    */
-  async ingest(text, { source = 'glasses', confidence = null } = {}) {
+  async ingest(text, options = {}) {
+    if(!this.getConfig().voice.enabled)return this.ingestVoice(text,options);
+    return voiceTurn(text,options.source || 'glasses',()=>this.ingestVoice(text,options));
+  }
+
+  async ingestVoice(text, { source = 'glasses', confidence = null } = {}) {
     const cfg = this.getConfig();
     const utterance = String(text || '').trim().replace(/\s+/g, ' ');
     const transcript = utterance ? this.#beginTranscript(utterance, source, 'voice', confidence) : null;
