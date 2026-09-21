@@ -136,7 +136,7 @@ export class Panel {
     let detail: string;
     if (!snap.baseUrl || !snap.token) {
       tone = 'warn'; title = 'Setup required';
-      detail = 'Enter your Carvis address and pairing token below. The microphone stays off until you unmute.';
+      detail = 'Open Settings to enter your Carvis address and pairing token. The microphone stays off until you unmute.';
     } else if (snap.connection === 'live') {
       tone = 'ok';
       title = snap.muted ? 'Connected · muted' : 'Connected';

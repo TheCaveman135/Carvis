@@ -1,3 +1,4 @@
+import './navigation';
 import {WidgetFocus} from './interaction';
 import { installForegroundRecovery } from './foreground-recovery';
 import { hostLifecycleAction } from './lifecycle';
@@ -1094,6 +1095,11 @@ async function main(): Promise<void> {
 
 void main().catch((err) => {
   console.error('Carvis failed to start', err);
+  const title = document.getElementById('heroTitle');
+  const detail = document.getElementById('heroDetail');
+  if (title) title.textContent = 'Glasses connection unavailable';
+  if (detail) detail.textContent = 'Open this companion inside Even Hub with your glasses connected. Settings remain available; reopen the app to retry.';
+
 });
 
 // Referenced so the bundler keeps the constant even if tree-shaking gets clever.

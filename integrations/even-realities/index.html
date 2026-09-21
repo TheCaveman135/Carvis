@@ -3,149 +3,32 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Carvis</title>
-    <style>
-      [hidden] { display: none !important; }
-      /*
-       * The phone panel. The G2 renders through the SDK and never through this
-       * DOM — but this page is the only place you can see *why* the glasses are
-       * not showing anything, so it is a status console, not a splash screen.
-       */
-      :root {
-        --bg: #101718;
-        --card: #182325;
-        --line: #304143;
-        --text: #eeeede;
-        --dim: #a1aeac;
-        --ok: #16a34a;
-        --warn: #d97706;
-        --bad: #dc2626;
-        --accent: #93ad58;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bg: #101718;
-          --card: #182325;
-          --line: #304143;
-          --text: #eeeede;
-          --dim: #a1aeac;
-          --ok: #4ade80;
-          --warn: #fbbf24;
-          --bad: #f87171;
-          --accent: #93ad58;
-        }
-      }
-
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        padding: 12px 12px calc(24px + env(safe-area-inset-bottom));
-        background: var(--bg);
-        color: var(--text);
-        font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
-        -webkit-font-smoothing: antialiased;
-      }
-
-      .card {
-        background: var(--card);
-        border: 1px solid var(--line);
-        border-radius: 14px;
-        padding: 14px;
-        margin-bottom: 10px;
-      }
-
-      /* ── hero status ─────────────────────────────────────────── */
-      .hero { display: flex; align-items: flex-start; gap: 12px; }
-      .beacon {
-        width: 14px; height: 14px; border-radius: 50%;
-        background: var(--dim); flex: none; margin-top: 4px;
-      }
-      .beacon.ok   { background: var(--ok);   box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 18%, transparent); }
-      .beacon.warn { background: var(--warn); box-shadow: 0 0 0 4px color-mix(in srgb, var(--warn) 18%, transparent); }
-      .beacon.bad  { background: var(--bad);  box-shadow: 0 0 0 4px color-mix(in srgb, var(--bad) 18%, transparent); }
-      .beacon.pulse { animation: breathe 1.6s ease-in-out infinite; }
-      @keyframes breathe { 50% { opacity: 0.35; } }
-
-      .hero h1 { margin: 0; font-size: 19px; font-weight: 650; letter-spacing: -0.01em; }
-      .hero .detail { margin: 3px 0 0; font-size: 13.5px; color: var(--dim); }
-      .hero .err {
-        margin: 8px 0 0; font-size: 12.5px; color: var(--bad);
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        word-break: break-word;
-      }
-
-      /* ── actions ─────────────────────────────────────────────── */
-      .actions { display: flex; gap: 8px; margin-top: 13px; }
-      button {
-        flex: 1; appearance: none; -webkit-tap-highlight-color: transparent;
-        border: 1px solid var(--line); background: var(--bg); color: var(--text);
-        border-radius: 10px; padding: 11px 8px;
-        font: inherit; font-size: 14px; font-weight: 550;
-        cursor: pointer;
-      }
-      button:active { opacity: 0.55; }
-      button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-      button.on { background: var(--warn); border-color: var(--warn); color: #000; }
-
-      /* ── rows ────────────────────────────────────────────────── */
-      h2 {
-        margin: 0 0 10px; font-size: 11px; font-weight: 650;
-        letter-spacing: 0.07em; text-transform: uppercase; color: var(--dim);
-      }
-      .row {
-        display: flex; align-items: baseline; justify-content: space-between;
-        gap: 12px; padding: 7px 0; border-top: 1px solid var(--line);
-      }
-      .row:first-of-type { border-top: 0; }
-      .row .k { color: var(--dim); font-size: 13.5px; }
-      .row .v { font-size: 13.5px; font-weight: 550; text-align: right; }
-      .v.ok { color: var(--ok); } .v.warn { color: var(--warn); } .v.bad { color: var(--bad); }
-
-      /* ── feed ────────────────────────────────────────────────── */
-      .entry { display: flex; gap: 9px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
-      .entry:first-of-type { border-top: 0; }
-      .entry time { color: var(--dim); font-size: 12px; flex: none; font-variant-numeric: tabular-nums; padding-top: 1px; }
-      .entry .body { min-width: 0; }
-      .entry .body small { display: block; color: var(--dim); font-size: 12px; }
-      .entry.error .body { color: var(--bad); }
-      .empty { color: var(--dim); font-size: 13.5px; margin: 0; }
-
-      /* ── settings ────────────────────────────────────────────── */
-      details summary {
-        list-style: none; cursor: pointer; color: var(--dim);
-        font-size: 11px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase;
-      }
-      details summary::-webkit-details-marker { display: none; }
-      details[open] summary { margin-bottom: 11px; }
-      label { display: block; font-size: 12.5px; color: var(--dim); margin: 9px 0 4px; }
-      input, select {
-        width: 100%; appearance: none;
-        border: 1px solid var(--line); border-radius: 9px;
-        background: var(--bg); color: var(--text);
-        padding: 10px; font: inherit; font-size: 14px;
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      }
-      .hint { font-size: 12px; color: var(--dim); margin: 10px 0 0; }
-    </style>
+    <title>Carvis Companion</title>
+    <link rel="stylesheet" href="/src/companion.css" />
   </head>
   <body>
+    <header class="brand"><div class="wordmark"><span class="brand-mark">c</span><strong>carvis</strong></div><span class="edition">EVEN COMPANION</span></header>
+    <div class="intro"><p class="eyebrow">YOUR ASSISTANT, WITH YOU</p><h1>A little closer.</h1><p>Voice, replies, and useful things. Right in view.</p></div>
+    <nav class="companion-tabs" aria-label="Companion sections"><button data-page="home" aria-pressed="true">Overview</button><button data-page="history" aria-pressed="false">History</button><button data-page="settings" aria-pressed="false">Settings</button></nav>
+    <main><section data-panel="home" aria-label="Overview">
     <div class="card">
       <div class="hero">
         <span class="beacon" id="beacon"></span>
         <div>
-          <h1 id="heroTitle">Starting…</h1>
+          <h2 id="heroTitle">Starting…</h2>
           <p class="detail" id="heroDetail">Waiting for the Even bridge.</p>
           <p class="err" id="heroError" hidden></p>
         </div>
       </div>
       <div class="actions">
         <button id="muteBtn">Unmute</button>
-        <button id="reconnectBtn" class="primary">Reconnect</button>
+        <button id="reconnectBtn">Reconnect</button>
       </div>
     </div>
 
+<button id="setupLink" class="setup-link">Connection & companion settings →</button>
     <div class="card">
-      <h2>Status</h2>
+      <h2>At a glance</h2>
       <div class="row"><span class="k">Microphone</span><span class="v" id="rowMic">—</span></div>
       <div class="row"><span class="k">Glasses display</span><span class="v" id="rowDisplay">—</span></div>
       <div class="row"><span class="k">HUD</span><span class="v" id="rowHud">—</span></div>
@@ -154,9 +37,21 @@
       <div class="row"><span class="k">Last contact</span><span class="v" id="rowSeen">—</span></div>
     </div>
 
+    </section><section data-panel="settings" aria-label="Settings" hidden>    <div class="card">
+      <details id="connectionSettings" open>
+        <summary>Connect to Carvis</summary><ol class="setup-steps"><li>In Carvis, enable Assistant engine and Even Realities under Integrations.</li><li>Make your Carvis server reachable from your phone using your LAN, VPN, Tailscale, or a hosted address. Copy its HTTPS address and generate a pairing token in Even Realities → Settings.</li><li>Paste them here. Add Voice conversation and Hear Carvis speak for voice features.</li></ol>
+        <label for="urlInput">Carvis address</label>
+        <input id="urlInput" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://your-carvis.example" />
+        <label for="tokenInput">Pairing token</label>
+        <input id="tokenInput" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="From Integrations → Even Realities" />
+        <div class="actions"><button id="saveBtn" class="primary">Save and reconnect</button></div>
+        <p class="hint">Use the server address this companion was packaged for. Your Carvis password and AI API keys do not belong here.</p>
+      </details>
+    </div>
+
     <div class="card">
       <h2>Glasses and audio</h2>
-      <p class="hint">Enable Assistant engine and Even Realities in Carvis. Voice conversation adds microphone input; Speech output adds spoken replies.</p>
+      <p class="hint">Enable Assistant engine and Even Realities in Carvis. Voice conversation adds microphone input; Hear Carvis speak adds spoken replies.</p>
       <label for="indicatorSelect">Tiny bottom-left dot</label>
       <select id="indicatorSelect">
         <option value="muted">Show when muted</option>
@@ -182,22 +77,13 @@
       <p class="hint">Double-tap removes the selection outline and cancels an unfinished adjustment. Widgets stay. Use Clear screen in the glasses app menu to remove them. With nothing selected, a single tap controls your microphone.</p>
     </div>
 
+    </section><section data-panel="history" aria-label="History" hidden>
     <div class="card">
-      <h2>Reply history · phone only</h2>
+      <h2>Reply history</h2><p class="hint">Recent replies live here on your phone. Your glasses stay focused on the moment.</p>
       <div id="feed"><p class="empty">Nothing yet.</p></div>
     </div>
 
-    <div class="card">
-      <details id="connectionSettings" open>
-        <summary>Connection settings</summary>
-        <label for="urlInput">Carvis address</label>
-        <input id="urlInput" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://your-carvis.example" />
-        <label for="tokenInput">Token</label>
-        <input id="tokenInput" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="From Integrations → Even Realities" />
-        <div class="actions"><button id="saveBtn" class="primary">Save and reconnect</button></div>
-        <p class="hint">The address must also be in the app's network whitelist, or every request fails as a plain network error.</p>
-      </details>
-    </div>
+</section></main><footer>Carvis companion · 1.2.0 · for Carvis 0.3</footer>
 
     <script type="module" src="/src/main.ts"></script>
   </body>
