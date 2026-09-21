@@ -1809,16 +1809,21 @@ function renderGlobalKeys() {
 function renderModelRouter() {
   const card = el("section", {class:"settings-card full"},
     el("h2",{},"Model Router"),
-    el("p",{},"Choose which AI models your enabled integrations use. Save each integration separately. Model changes here also appear in its settings."));
+    el("p",{},"Models for enabled integrations. Expand a row to change its choices."));
   const entries = modelRouterEntries(state.data.integrations || []);
   if (!entries.length) card.append(el("p",{class:"small muted"},"Enable an integration that uses AI to see its model controls here."),el("a",{class:"button quiet",href:"#integrations"},"Browse integrations"));
   const engine = (state.data.integrations || []).find(i=>i.id==='assistant-engine');
   const providers = engine?.config?.models__providers || engine?.fields?.find(f=>f.key==='models__providers')?.default || [];
   for (const {integration,fields,note} of entries) {
     const cfg=integration.config || {}, updates=[], feedback=el('div');
-    const form=el('form',{class:'control-card'},el('h3',{},integration.name));
+    const form=el('form',{class:'router-settings'});
+    const modelSummary=el('span',{class:'router-summary'});
+    const updateSummary=()=>{const models=[...new Set(fields.map(f=>integration.config?.[f.key] || '').filter(Boolean))];modelSummary.textContent=models.length?models.join(' · '):fields.length?`${fields.length} model ${fields.length===1?'role':'roles'} · not configured`:'Shared or external model';};
+    updateSummary();
+    const row=el('details',{class:'router-integration'},el('summary',{},el('span',{class:'router-name'},integration.name),modelSummary),form);
     if(note)form.append(el('p',{class:'small muted'},note));
     for (const definition of fields) {
+      const roleFields=el('div',{class:'router-role'});
       const providerKey=definition.key.startsWith('models__roles__')?definition.key.replace(/__model$/,'__provider'):null;
       const providerField=integration.fields.find(f=>f.key===providerKey);
       const savedProvider=providerField ? (cfg[providerKey] ?? providerField.default) : null;
@@ -1840,7 +1845,7 @@ function renderModelRouter() {
       const discover=async()=>{
         const version=++revision;populate();
         status.textContent='Loading available models…';
-        try {const result=await api('/api/integration-models',{method:'POST',body:{integrationId:integration.id,field:definition.key,providerId:providerSelect?.value}});if(version!==revision)return;populate(result.models);status.textContent=result.note || `${result.models.length} available models. Choose one suitable for this task.`;}
+        try {const result=await api('/api/integration-models',{method:'POST',body:{integrationId:integration.id,field:definition.key,providerId:providerSelect?.value}});if(version!==revision)return;populate(result.models);status.textContent=result.note || ''; }
         catch(error){if(version===revision)status.textContent=errorText(error);}
       };
       if(providerField){
@@ -1849,9 +1854,9 @@ function renderModelRouter() {
         providerSelect=el('select',{'aria-label':`${integration.name}: ${label} provider`},...Array.from(options,([value,text])=>el('option',{value},text)));
         providerSelect.value=savedProvider || 'carvis-primary';
         providerSelect.addEventListener('change',()=>{custom.value='';void discover();});
-        form.append(field(label.replace(/model$/i,'provider'),providerSelect));
+        roleFields.append(field('Provider',providerSelect));
       }
-      form.append(field(label,select),customField,status);
+      roleFields.append(field('Model',select));form.append(el('section',{class:'router-role-section'},el('h4',{},label.replace(/: model$/i,'').replace(/^Model$/,'Local model')),roleFields,customField,status));
       updates.push(()=>({...{[definition.key]:custom.value.trim()},...(providerSelect?{[providerKey]:providerSelect.value}:{})}));
       void discover();
     }
@@ -1862,11 +1867,11 @@ function renderModelRouter() {
         event.preventDefault();save.disabled=true;
         try {
           await api(`/api/integrations/${encodeURIComponent(integration.id)}`,{method:'PUT',body:{config:Object.assign({},...updates.map(read=>read()))}});
-          await refreshState();formNotice(feedback,'Model routing saved.',true);
+          await refreshState();integration.config=state.data.integrations.find(i=>i.id===integration.id)?.config || integration.config;updateSummary();formNotice(feedback,'Model routing saved.',true);
         }catch(error){formNotice(feedback,errorText(error));}finally{save.disabled=false;}
       });
     }else form.addEventListener('submit',event=>event.preventDefault());
-    card.append(form);
+    card.append(row);
   }
   return card;
 }
