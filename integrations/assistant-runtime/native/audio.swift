@@ -40,32 +40,48 @@ if permission == .notDetermined {
     AVCaptureDevice.requestAccess(for:.audio){_ in semaphore.signal()};semaphore.wait()
 }
 guard AVCaptureDevice.authorizationStatus(for:.audio) == .authorized else{fail("Allow Carvis microphone access in macOS Privacy & Security → Microphone")}
-let engine=AVAudioEngine()
-let input=engine.inputNode
-var device=id
-guard let unit=input.audioUnit,AudioUnitSetProperty(unit,kAudioOutputUnitProperty_CurrentDevice,kAudioUnitScope_Global,0,&device,UInt32(MemoryLayout<AudioObjectID>.size))==noErr else{fail("Could not select this microphone")}
-// Let the tap negotiate with the selected hardware. The node's cached output
-// format may still describe the previous device after CurrentDevice changes.
-guard let target=AVAudioFormat(commonFormat:.pcmFormatInt16,sampleRate:16000,channels:1,interleaved:true) else{fail("Unsupported speech format")}
-var converter:AVAudioConverter?
-input.installTap(onBus:0,bufferSize:2048,format:nil){buffer,_ in
-    let format=buffer.format
-    guard format.sampleRate>0,format.channelCount>0 else{return}
-    // Build from the actual delivered buffer, including changes of device rate.
-    if converter == nil || !converter!.inputFormat.isEqual(format) {
-        converter=AVAudioConverter(from:format,to:target)
+// AVCaptureSession negotiates the selected microphone independently of the
+// system output device, including Bluetooth headset sample-rate transitions.
+final class AudioReceiver:NSObject,AVCaptureAudioDataOutputSampleBufferDelegate {
+    let target=AVAudioFormat(commonFormat:.pcmFormatInt16,sampleRate:16000,channels:1,interleaved:true)!
+    var converter:AVAudioConverter?
+    func captureOutput(_ output:AVCaptureOutput,didOutput sample:CMSampleBuffer,from connection:AVCaptureConnection) {
+        guard let description=CMSampleBufferGetFormatDescription(sample) else{return}
+        let format=AVAudioFormat(cmAudioFormatDescription:description)
+        let frames=CMSampleBufferGetNumSamples(sample)
+        guard frames>0,format.sampleRate>0,let buffer=AVAudioPCMBuffer(pcmFormat:format,frameCapacity:AVAudioFrameCount(frames)) else{return}
+        buffer.frameLength=AVAudioFrameCount(frames)
+        guard CMSampleBufferCopyPCMDataIntoAudioBufferList(sample,at:0,frameCount:Int32(frames),into:buffer.mutableAudioBufferList)==noErr else{return}
+        if converter == nil || !converter!.inputFormat.isEqual(format){converter=AVAudioConverter(from:format,to:target)}
+        guard let converter=converter,let converted=AVAudioPCMBuffer(pcmFormat:target,frameCapacity:AVAudioFrameCount(ceil(Double(frames)*16000/format.sampleRate)+16)) else{return}
+        var supplied=false;var error:NSError?
+        converter.convert(to:converted,error:&error){_,status in
+            if supplied{status.pointee = .noDataNow;return nil}
+            supplied=true;status.pointee = .haveData;return buffer
+        }
+        if error==nil,let bytes=converted.int16ChannelData?[0],converted.frameLength>0 {
+            FileHandle.standardOutput.write(Data(bytes:bytes,count:Int(converted.frameLength)*2))
+        }
     }
-    guard let converter=converter else{return}
-    let capacity=AVAudioFrameCount(ceil(Double(buffer.frameLength)*16000/format.sampleRate)+16)
-    guard let output=AVAudioPCMBuffer(pcmFormat:target,frameCapacity:capacity) else{return}
-    var supplied=false;var error:NSError?
-    converter.convert(to:output,error:&error){_,status in
-        if supplied{status.pointee = .noDataNow;return nil}
-        supplied=true;status.pointee = .haveData;return buffer
-    }
-    if error==nil,let bytes=output.int16ChannelData?[0],output.frameLength>0{FileHandle.standardOutput.write(Data(bytes:bytes,count:Int(output.frameLength)*2))}
 }
-do{try engine.start()}catch{fail("Microphone could not start: \(error.localizedDescription)")}
-let parent = getppid()
-let watchdog = Timer.scheduledTimer(withTimeInterval:1,repeats:true){_ in if getppid() != parent { engine.stop(); exit(0) }}
+guard let microphone=AVCaptureDevice(uniqueID:args[2]),microphone.hasMediaType(.audio) else{fail("Selected microphone is unavailable for capture")}
+let session=AVCaptureSession()
+let receiver=AudioReceiver()
+let output=AVCaptureAudioDataOutput()
+output.setSampleBufferDelegate(receiver,queue:DispatchQueue(label:"app.carvis.audio"))
+session.beginConfiguration()
+do {
+    let input=try AVCaptureDeviceInput(device:microphone)
+    guard session.canAddInput(input),session.canAddOutput(output) else{fail("Selected microphone cannot be opened")}
+    session.addInput(input);session.addOutput(output)
+}catch{fail("Microphone could not open: \(error.localizedDescription)")}
+session.commitConfiguration()
+let errors=NotificationCenter.default.addObserver(forName:.AVCaptureSessionRuntimeError,object:session,queue:nil){notification in
+    let error=notification.userInfo?[AVCaptureSessionErrorKey] as? NSError
+    fail("Microphone stopped: \(error?.localizedDescription ?? "capture error")")
+}
+session.startRunning()
+guard session.isRunning else{fail("Microphone could not start")}
+let parent=getppid()
+let watchdog=Timer.scheduledTimer(withTimeInterval:1,repeats:true){_ in if getppid() != parent {session.stopRunning();exit(0)}}
 RunLoop.main.run()
