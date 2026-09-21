@@ -645,6 +645,7 @@ export default {
         entities: states.map((s) => ({
           entity_id: s.entity_id,
           name: s.attributes?.friendly_name || s.entity_id,
+          defaultGuard: needsLiveOwner({}, s.entity_id, s) ? "critical" : "standard",
           state: s.state,
           domain: s.entity_id.split(".")[0],
           unit: s.attributes?.unit_of_measurement || "",
