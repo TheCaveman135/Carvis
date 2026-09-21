@@ -20,7 +20,7 @@ import {
 } from "./auth.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const VERSION = "0.3.1";
+const VERSION = "0.3.2";
 function fail(message, status = 400) {
   return Object.assign(Error(message), { status });
 }

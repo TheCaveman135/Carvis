@@ -120,7 +120,7 @@ remain usable when another extension or dependency is unavailable.
 
 ### Selecting Home Assistant entities
 
-Under Home Assistant → Settings → Devices & permissions, load entities to browse
+Under Home Assistant → Settings → Devices & permissions, entities load automatically for a saved connection. Browse
 room tabs, search, filter by type, or show observed entities only. The table shows
 name, entity ID, type, a read-only state snapshot, observation, interaction, and
 guard policy. Refresh entities to update rooms and states. Room assignments come

@@ -1704,6 +1704,7 @@ function makeEntitySelector(config) {
     }catch(error){formNotice(feedback,errorText(error));}finally{load.disabled=false;}
   },'compact','refresh');
   search.addEventListener('input',render);type.addEventListener('change',render);only.addEventListener('change',render);render();
+  if (config.baseUrl && (config.hasToken || config.token)) queueMicrotask(() => load.click());
   return {node:el('section',{class:'entity-section entity-manager'},el('div',{class:'entity-manager-title'},icon('home'),el('div',{},el('h3',{},'Entity management'),el('p',{class:'small muted'},'Choose what Carvis can see and control. Changes apply when you save.')),load),rooms,el('div',{class:'entity-filterbar'},search,type,el('label',{class:'check-label'},only,'Show selected only')),feedback,el('div',{class:'entity-table-heading'},el('div',{},heading,count),el('div',{class:'action-row'},selectAll,bulk)),list,el('p',{class:'small muted'},'Rooms come from Home Assistant. State is a read-only snapshot. Unobserved entities remain hidden from Carvis. Guards keep the existing Auto, Standard, and Require confirmation behavior.')),value:()=>({observed:[...observed],controlled:[...controlled],guards})};
 }
 
