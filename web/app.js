@@ -1615,8 +1615,10 @@ function configureIntegration(integration, host, {inline = false} = {}) {
       const chosen=new Set(Array.isArray(value)?value:[]);
       const domains=[...new Set([...chosen,'light','switch','fan','climate','cover','media_player','remote','scene','script','automation','input_boolean','input_number','input_select','button','number','select','lock','vacuum','humidifier','water_heater','siren','update'])].sort();
       const picker=el('fieldset',{class:'device-type-picker'},el('legend',{},'Device types Carvis may control'),el('p',{class:'small muted'},'Type permission is only the first step. Also enable Interact for each device below. Observation is separate.'));
-      for(const domain of domains){const check=input(`allow-type-${domain}`,'','checkbox',{checked:chosen.has(domain)});check.addEventListener('change',()=>{check.checked?chosen.add(domain):chosen.delete(domain);control.value=[...chosen].join('\n');control.dispatchEvent(new Event('input'));});picker.append(el('label',{class:'device-type-option'},check,el('span',{},domain.replaceAll('_',' '))));}
-      destination.append(picker,control);
+      const typeSummary=el('summary',{},`Device types · ${chosen.size} allowed`);
+      const typeDisclosure=el('details',{class:'device-type-disclosure'},typeSummary,picker);
+      for(const domain of domains){const check=input(`allow-type-${domain}`,'','checkbox',{checked:chosen.has(domain)});check.addEventListener('change',()=>{check.checked?chosen.add(domain):chosen.delete(domain);typeSummary.textContent=`Device types · ${chosen.size} allowed`;control.value=[...chosen].join('\n');control.dispatchEvent(new Event('input'));});picker.append(el('label',{class:'device-type-option'},check,el('span',{},domain.replaceAll('_',' '))));}
+      destination.append(typeDisclosure,control);
     }else destination.append(f.type === "boolean" ? el("label", { class: "field checkbox" }, control, el("span", {}, el("span", { class: "field-label" }, f.label || f.key), description ? el("span", { class: "field-description" }, description) : null)) : field(f.label || f.key, control, description));
     if (f.key === "pairingToken" && integration.id === "even-realities") {
       const secretArea = el("div");
