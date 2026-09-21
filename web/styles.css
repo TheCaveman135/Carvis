@@ -1938,8 +1938,7 @@ dialog::backdrop {
 .control-card h2{font-size:18px;letter-spacing:-.4px;margin-bottom:12px}
 .control-card h3{font-size:14px;margin-bottom:9px}
 .control-card>p{font-size:13px;line-height:1.7;margin-bottom:17px;color:var(--muted)}
-.control-card a{color:var(--accent)}
-.control-card .button{color:inherit}
+.control-card a:not(.button){color:var(--accent)}
 .setup-steps{padding-left:23px;line-height:1.9;font-size:14px;color:var(--muted);margin:10px 0 25px}
 .setup-steps li{padding-left:8px;margin-bottom:14px}
 .setup-dependencies{border-top:1px solid var(--line);padding-top:18px;margin-top:20px;font-size:13px}
