@@ -635,12 +635,21 @@ export default {
   async route({ method, path }, ctx) {
     if (method === "GET" && path === "/entities") {
       const states = await haRequest(ctx, "/api/states");
+      let areas = {}, areaWarning;
+      try {
+        areas = await haRequest(ctx, "/api/template", {template: "{% set ns = namespace(items={}) %}{% for s in states %}{% set id = area_id(s.entity_id) %}{% if id %}{% set ns.items = dict(ns.items, **{s.entity_id: {'id': id, 'name': area_name(id)}}) %}{% endif %}{% endfor %}{{ ns.items | to_json }}"});
+        if (!areas || typeof areas !== 'object' || Array.isArray(areas)) throw Error('Invalid room metadata');
+      } catch { areaWarning = "Room information could not be loaded. Entities are still available under Unassigned."; }
       return {
+        areaWarning,
         entities: states.map((s) => ({
           entity_id: s.entity_id,
           name: s.attributes?.friendly_name || s.entity_id,
           state: s.state,
           domain: s.entity_id.split(".")[0],
+          unit: s.attributes?.unit_of_measurement || "",
+          area_id: areas[s.entity_id]?.id || "",
+          area_name: areas[s.entity_id]?.name || "",
         })),
       };
     }

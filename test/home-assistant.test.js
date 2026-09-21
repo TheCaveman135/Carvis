@@ -323,3 +323,18 @@ test("Apple TV commands are delegated exclusively and disabled integration canno
   assert.deepEqual(invoked[1], args);
   assert.equal(f.calls.filter((c) => c.options.method === "POST").length, 0);
 });
+
+test('Owner entity selector includes rooms and units without expanding model visibility',async()=>{
+ const f=fixture(),original=f.ctx.fetch;
+ f.ctx.fetch=async(url,options)=>new URL(url).pathname==='/api/template'?new Response(JSON.stringify({'light.room':{id:'living',name:'Living Room'}})):original(url,options);
+ const result=await integration.route({method:'GET',path:'/entities'},f.ctx);
+ assert.equal(result.entities.find(e=>e.entity_id==='light.room').area_name,'Living Room');
+ assert.equal(result.entities.find(e=>e.entity_id==='lock.entry').area_id,'');
+ assert.equal(result.areaWarning,undefined);
+ const tool=await f.tool('ha_list_entities');assert.deepEqual((await tool.execute({})).entities.map(e=>e.entity_id),['light.room']);
+});
+test('Room lookup failure leaves owner entity selection available with a warning',async()=>{
+ const f=fixture();const result=await integration.route({method:'GET',path:'/entities'},f.ctx);
+ assert.ok(result.entities.length);assert.match(result.areaWarning,/Room information/);
+ assert.ok(result.entities.every(e=>e.area_id===''));
+});

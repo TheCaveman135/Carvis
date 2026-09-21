@@ -117,3 +117,17 @@ permissions merely because a protocol calls them.
 The extracted built-in protocols use their existing deterministic gateway and
 guard policy. Background services stop when disabled; independent extensions
 remain usable when another extension or dependency is unavailable.
+
+### Selecting Home Assistant entities
+
+Under Home Assistant → Settings → Devices & permissions, load entities to browse
+room tabs, search, filter by type, or show observed entities only. The table shows
+name, entity ID, type, a read-only state snapshot, observation, interaction, and
+guard policy. Refresh entities to update rooms and states. Room assignments come
+from Home Assistant; entities without an assignment appear under Unassigned.
+
+Row selection is for bulk edits and does not itself grant access. Bulk actions
+apply only to marked rows within the current filters. Save changes to apply the
+permission draft. Removing observation also removes interaction and its guard
+override. The existing Auto, Standard, and Require confirmation rules are unchanged.
+On narrow screens, scroll the table horizontally to reach the permission columns.
