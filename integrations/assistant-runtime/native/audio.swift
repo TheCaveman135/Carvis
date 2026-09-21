@@ -44,9 +44,18 @@ let engine=AVAudioEngine()
 let input=engine.inputNode
 var device=id
 guard let unit=input.audioUnit,AudioUnitSetProperty(unit,kAudioOutputUnitProperty_CurrentDevice,kAudioUnitScope_Global,0,&device,UInt32(MemoryLayout<AudioObjectID>.size))==noErr else{fail("Could not select this microphone")}
-let format=input.outputFormat(forBus:0)
-guard format.sampleRate>0,format.channelCount>0,let target=AVAudioFormat(commonFormat:.pcmFormatInt16,sampleRate:16000,channels:1,interleaved:true),let converter=AVAudioConverter(from:format,to:target) else{fail("Unsupported microphone format")}
-input.installTap(onBus:0,bufferSize:2048,format:format){buffer,_ in
+// Let the tap negotiate with the selected hardware. The node's cached output
+// format may still describe the previous device after CurrentDevice changes.
+guard let target=AVAudioFormat(commonFormat:.pcmFormatInt16,sampleRate:16000,channels:1,interleaved:true) else{fail("Unsupported speech format")}
+var converter:AVAudioConverter?
+input.installTap(onBus:0,bufferSize:2048,format:nil){buffer,_ in
+    let format=buffer.format
+    guard format.sampleRate>0,format.channelCount>0 else{return}
+    // Build from the actual delivered buffer, including changes of device rate.
+    if converter == nil || !converter!.inputFormat.isEqual(format) {
+        converter=AVAudioConverter(from:format,to:target)
+    }
+    guard let converter=converter else{return}
     let capacity=AVAudioFrameCount(ceil(Double(buffer.frameLength)*16000/format.sampleRate)+16)
     guard let output=AVAudioPCMBuffer(pcmFormat:target,frameCapacity:capacity) else{return}
     var supplied=false;var error:NSError?
