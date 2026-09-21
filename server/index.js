@@ -1,4 +1,5 @@
 import http from "node:http";
+import { discoverModels } from "./model-catalog.js";
 import { readFile, stat } from "node:fs/promises";
 import { resolve, join, extname, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -20,7 +21,7 @@ import {
 } from "./auth.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const VERSION = "0.3.2";
+const VERSION = "0.3.3";
 function fail(message, status = 400) {
   return Object.assign(Error(message), { status });
 }
@@ -239,6 +240,10 @@ export async function createApp({
           memory: store.data.memory,
           version: VERSION,
         });
+      if (path === "/api/models" && req.method === "POST") {
+        if (!user) throw fail("Sign in to Carvis.", 401);
+        return json(res, 200, await discoverModels(await body(req), store.config.model, fetcher));
+      }
       if (path === "/api/settings" && req.method === "POST") {
         const b = await body(req),
           next = structuredClone(store.config);
