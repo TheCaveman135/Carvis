@@ -1582,6 +1582,8 @@ function configureIntegration(integration, host) {
     else if (["entities", "string-array", "string_array"].includes(f.type)) control = el("textarea", { name: f.key, rows: "4", placeholder: f.placeholder || "One item per line" }, Array.isArray(value) ? value.join("\n") : value ?? "");
     else if (["textarea", "json"].includes(f.type)) control = el("textarea", { name: f.key, rows: f.type === "json" ? "7" : "4", class: f.type === "json" ? "json-input" : "", spellcheck: f.type === "json" ? "false" : "true", placeholder: f.placeholder || (f.type === "json" ? "[] or {}" : "") }, typeof value === "object" || f.type === "json" && value !== undefined && typeof value !== "string" ? JSON.stringify(value, null, 2) : value ?? "");
     else control = input(f.key, f.type === "password" ? "" : value ?? "", ["password", "url", "number"].includes(f.type) ? f.type : "text", { autocomplete: f.type === "password" ? "new-password" : "off", min: f.min ?? f.minimum, max: f.max ?? f.maximum, step: f.type === "number" ? f.step ?? "any" : undefined, placeholder: f.type === "password" ? cfg[`has${f.key[0].toUpperCase()}${f.key.slice(1)}`] ? "Saved · leave blank to keep" : "Enter your secret" : f.placeholder || "" });
+    const sharedKeyId = {openaiKey:'openai',anthropicKey:'anthropic',stt__deepgramKey:'deepgram',stt__assemblyaiKey:'assemblyai',search__geminiKey:'gemini'}[f.key];
+    if(sharedKeyId && f.type==='password' && !cfg[`has${f.key[0].toUpperCase()}${f.key.slice(1)}`]) control.placeholder=state.data.apiKeys?.[sharedKeyId]?.saved ? 'Using global key · optional override' : 'Optional override · set shared key in Settings';
     let hasSecret = Boolean(cfg[`has${f.key[0].toUpperCase()}${f.key.slice(1)}`]);
     const updateRequired = () => { control.required = Boolean(enabled.checked && f.required && (f.type !== "password" || !hasSecret)); };
     updateRequired(); enabled.addEventListener("change", updateRequired);
@@ -1707,6 +1709,25 @@ function makeEntitySelector(config) {
   search.addEventListener('input',render);type.addEventListener('change',render);only.addEventListener('change',render);render();
   if (config.baseUrl && (config.hasToken || config.token)) queueMicrotask(() => load.click());
   return {node:el('section',{class:'entity-section entity-manager'},el('div',{class:'entity-manager-title'},icon('home'),el('div',{},el('h3',{},'Entity management'),el('p',{class:'small muted'},'Choose what Carvis can see and control. Changes apply when you save.')),load),rooms,el('div',{class:'entity-filterbar'},search,type,el('label',{class:'check-label'},only,'Show selected only')),feedback,el('div',{class:'entity-table-heading'},el('div',{},heading,count),el('div',{class:'action-row'},selectAll,bulk)),list,el('p',{class:'small muted'},'Rooms come from Home Assistant. State is a read-only snapshot. Unobserved entities remain hidden from Carvis. Guards keep the existing Auto, Standard, and Require confirmation behavior.')),value:()=>({observed:[...observed],controlled:[...controlled],guards})};
+}
+
+function renderGlobalKeys() {
+  const feedback=el('div'), controls=[];
+  const form=el('form',{class:'settings-card full'},el('h2',{},'Global API keys'),el('p',{},'Save a service key once for integrations to reuse. Your saved OpenAI model key is shared automatically. A separate key in an integration overrides the shared key. Compatible providers keep their own key; select Main provider in Model Router to use that connection.'));
+  for(const [id,label] of [['openai','OpenAI'],['anthropic','Anthropic'],['deepgram','Deepgram'],['assemblyai','AssemblyAI'],['gemini','Google Gemini']]){
+    const status=state.data.apiKeys?.[id];
+    const key=input(id,'','password',{autocomplete:'new-password',placeholder:status?.saved?'Saved · leave blank to keep':'Optional API key'});
+    const clear=input(`remove-${id}`,'','checkbox');
+    form.append(field(label,key,status?.fromMainProvider?'Using your saved OpenAI key from the main model settings.':status?.saved?'Shared key saved.':'Add only the services you use.'));
+    if(status?.saved&&!status.fromMainProvider)form.append(el('label',{class:'field checkbox'},clear,el('span',{},`Remove shared ${label} key`)));
+    controls.push({id,key,clear});
+  }
+  const save=el('button',{class:'button primary',type:'submit'},'Save API keys');form.append(feedback,save);
+  form.addEventListener('submit',async event=>{event.preventDefault();save.disabled=true;try{
+    const apiKeys=Object.fromEntries(controls.filter(c=>c.clear.checked||c.key.value.trim()).map(c=>[c.id,c.clear.checked?null:c.key.value.trim()]));
+    await api('/api/settings',{method:'POST',body:{apiKeys}});await refreshState();form.replaceWith(renderGlobalKeys());toast('Global API keys saved.');
+  }catch(error){formNotice(feedback,errorText(error));}finally{save.disabled=false;}});
+  return form;
 }
 
 function renderModelRouter() {
@@ -2066,7 +2087,7 @@ function renderSettings(main) {
         "Settle in.",
         "Choose how Carvis thinks, how it talks, and what it remembers about you.",
       ),
-      el("div", { class: "settings-grid" }, profileForm, modelForm, renderModelRouter(), memoryCard),
+      el("div", { class: "settings-grid" }, profileForm, modelForm, renderGlobalKeys(), renderModelRouter(), memoryCard),
     ),
   );
 }

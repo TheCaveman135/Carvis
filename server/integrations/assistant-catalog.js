@@ -67,6 +67,7 @@ export function decorateAssistantIntegration(module) {
   delete module.workspaceUrl;
   delete module.workspaceDependsOn;
   for (const field of module.fields || []) {
+    if (['openaiKey','anthropicKey','stt__deepgramKey','stt__assemblyaiKey','search__geminiKey'].includes(field.key)) field.description = 'Optional integration-specific key. Leave blank to use the shared key from Carvis Settings → Global API keys, or to keep an existing override.';
     const help = FIELD_HELP[field.key];
     if (help) [field.label, field.description] = help;
     const role = /^models__roles__([^_]+|voice_triage)__(.+)$/.exec(field.key);

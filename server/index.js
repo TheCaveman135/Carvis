@@ -1,3 +1,4 @@
+import { publicGlobalKeys, updateGlobalKeys, resolvedMainModel } from './global-keys.js';
 import http from "node:http";
 import { discoverModels } from "./model-catalog.js";
 import { readFile, stat } from "node:fs/promises";
@@ -232,7 +233,8 @@ export async function createApp({
       if (path === "/api/state" && req.method === "GET")
         return json(res, 200, {
           profile: store.config.profile,
-          model: publicModel(store.config.model),
+          model: publicModel(resolvedMainModel(store.config)),
+          apiKeys: publicGlobalKeys(store.config),
           integrations: registry.list(),
           conversations: store.data.conversations
             .map(({ messages, ...c }) => c)
@@ -242,11 +244,12 @@ export async function createApp({
         });
       if (path === "/api/models" && req.method === "POST") {
         if (!user) throw fail("Sign in to Carvis.", 401);
-        return json(res, 200, await discoverModels(await body(req), store.config.model, fetcher));
+        return json(res, 200, await discoverModels(await body(req), resolvedMainModel(store.config), fetcher));
       }
       if (path === "/api/settings" && req.method === "POST") {
         const b = await body(req),
           next = structuredClone(store.config);
+        if (b.apiKeys) updateGlobalKeys(next, b.apiKeys);
         if (b.profile) {
           for (const key of Object.keys(b.profile))
             if (!["displayName", "assistantName", "personality"].includes(key))
@@ -294,7 +297,7 @@ export async function createApp({
         return json(res, 200, {
           success: true,
           profile: next.profile,
-          model: publicModel(next.model),
+          model: publicModel(resolvedMainModel(next)),
         });
       }
       if (path === "/api/conversations" && req.method === "POST") {

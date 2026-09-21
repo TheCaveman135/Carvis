@@ -1,3 +1,4 @@
+import { globalKeys } from './global-keys.js';
 import { fork } from 'node:child_process';
 import { mkdirSync, writeFileSync, renameSync, openSync, closeSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -142,6 +143,12 @@ export class AssistantRuntime {
   persistRuntimeConfig(cfg) {
     // The child is trusted implementation code. Its model-facing tools cannot
     // configure plugins. Only its owner settings routes may change these values.
+    cfg = structuredClone(cfg);
+    const sharedKeys = globalKeys(this.store.config);
+    const inherited = {openaiKey:'openai',anthropicKey:'anthropic',stt__deepgramKey:'deepgram',stt__assemblyaiKey:'assemblyai',search__geminiKey:'gemini'};
+    for (const [id, section, key, service] of [['voice','stt','deepgramKey','deepgram'],['voice','stt','assemblyaiKey','assemblyai'],['web-search','search','geminiKey','gemini']]) {
+      if (!this.store.config.integrations[id]?.config?.[`${section}__${key}`] && cfg[section]?.[key] === sharedKeys[service]) cfg[section][key] = '';
+    }
     const projected = integrationConfigFromLegacy(cfg, runtimeEnvironment(this.store));
     for (const [id, entry] of Object.entries(projected)) {
       const current = this.store.config.integrations[id];
@@ -149,6 +156,7 @@ export class AssistantRuntime {
       const fields = new Set((this.registry.modules.get(id)?.fields || []).map(f => f.key));
       for (const [key, value] of Object.entries(entry.config)) {
         if (id === 'even-realities' && ['publicBaseUrl', 'microphoneEnabled', 'speechBaseUrl', 'speechApiKey', 'speechModel', 'speechLanguage'].includes(key)) continue;
+        if (inherited[key] && !current.config[key] && value === sharedKeys[inherited[key]]) continue;
         if (fields.has(key)) current.config[key] = value;
       }
     }

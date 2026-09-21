@@ -41,7 +41,7 @@ export function registerAssistantServices(registry) {
   const runtime = runtimeFor(registry);
   for (const [id, [name, description, category]] of Object.entries(descriptions)) {
     const fields = sectionFields(id);
-    if (id === 'assistant-engine') fields.push(password('openaiKey', 'OpenAI API key'), password('anthropicKey', 'Anthropic API key'));
+    if (id === 'assistant-engine') fields.push(password('openaiKey', 'OpenAI key override (optional)'), password('anthropicKey', 'Anthropic key override (optional)'));
     if (id === 'atlas') fields.push(password('atlasToken', 'Atlas API token'));
     const module = {
       id, name, description, category, version: '1.0.0', icon: 'sparkles', fields,

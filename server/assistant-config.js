@@ -1,3 +1,4 @@
+import { globalKeys, resolvedMainModel } from './global-keys.js';
 import { DEFAULTS } from '../integrations/assistant-runtime/defaults.js';
 
 export const SECTION_OWNERS = {
@@ -128,11 +129,16 @@ export function projectRuntimeConfig(store) {
       for (const key of sections) if (cfg[key] && 'enabled' in cfg[key] && saved[key]?.enabled === undefined && config(id)[`${key}__enabled`] === undefined) cfg[key].enabled = true;
     }
   }
+  const sharedKeys = globalKeys(store.config);
+  cfg.stt.deepgramKey ||= sharedKeys.deepgram || '';
+  cfg.stt.assemblyaiKey ||= sharedKeys.assemblyai || '';
+  cfg.search.geminiKey ||= sharedKeys.gemini || '';
   cfg.server = { host: '127.0.0.1', port: 0 };
   return cfg;
 }
 export function runtimeEnvironment(store) {
   const env = store.plugin('assistant-engine').get('environment', {});
   const engine = store.config.integrations['assistant-engine']?.config || {};
-  return { ...env, OPENAI_API_KEY: engine.openaiKey || env.OPENAI_API_KEY || '', ANTHROPIC_API_KEY: engine.anthropicKey || env.ANTHROPIC_API_KEY || '', ATLAS_TOKEN: store.config.integrations.atlas?.config?.atlasToken || env.ATLAS_TOKEN || '', CARVIS_PRIMARY_API_KEY: store.config.model.apiKey || '' };
+  const keys = globalKeys(store.config);
+  return { ...env, OPENAI_API_KEY: engine.openaiKey || keys.openai || env.OPENAI_API_KEY || '', ANTHROPIC_API_KEY: engine.anthropicKey || keys.anthropic || env.ANTHROPIC_API_KEY || '', ATLAS_TOKEN: store.config.integrations.atlas?.config?.atlasToken || env.ATLAS_TOKEN || '', CARVIS_PRIMARY_API_KEY: resolvedMainModel(store.config).apiKey };
 }

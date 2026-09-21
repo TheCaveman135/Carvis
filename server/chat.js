@@ -1,3 +1,4 @@
+import { resolvedMainModel } from './global-keys.js';
 import { modelRound, toolOutput } from "./provider.js";
 import { text as checkedText } from "./validation.js";
 
@@ -92,7 +93,7 @@ export class Chat {
           text: round ? "Working on your request…" : "Thinking…",
         });
         const response = await this.round({
-          config: cfg.model,
+          config: resolvedMainModel(cfg),
           system,
           messages: await this.registry.sanitize(messages, { signal }),
           tools: enabled,
