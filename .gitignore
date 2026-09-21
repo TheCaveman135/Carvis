@@ -1,0 +1,15 @@
+node_modules/
+.carvis/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+coverage/
+test-results/
+playwright-report/
+*.ehpk
+integrations/even-realities/dist/
+
+output/
+.playwright-cli/
