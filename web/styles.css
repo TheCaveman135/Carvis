@@ -2018,3 +2018,5 @@ dialog::backdrop {
 .integration-inline-setup .integration-settings-form{max-width:none}
 
 .integration-advanced-group{border:1px solid var(--line);border-radius:12px;padding:18px 22px}.integration-advanced-group>summary{cursor:pointer;color:var(--text);font-weight:550}.integration-advanced-group .integration-settings-panel{padding:18px 0 0}
+
+.device-type-picker{border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-wrap:wrap;gap:10px}.device-type-picker legend{font-weight:600;padding:0 7px}.device-type-picker>p{width:100%}.device-type-option{display:flex;gap:8px;align-items:center;padding:10px 13px;border:1px solid var(--line);border-radius:8px;text-transform:capitalize;background:var(--raised);cursor:pointer}.device-type-option:has(input:checked){border-color:var(--accent);color:var(--accent)}.entity-table td>small{display:block;margin-top:5px}.entity-filterbar{flex-wrap:wrap}

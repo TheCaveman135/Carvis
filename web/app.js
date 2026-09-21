@@ -1499,6 +1499,7 @@ async function renderIntegrationDetail(main, id, section, version) {
   } catch(error) { if(version===state.navVersion) body.replaceChildren(el('div',{class:'notice error'},errorText(error)),button('Retry',()=>route(),'compact')); }
 }
 function integrationFieldGroup(integration, definition) {
+  if(definition.key==='agent__allowedDomains')return {id:'devices',label:'Devices & permissions',description:'Choose what Carvis can see, what it can control, and when it needs to ask.'};
   const supplied = definition.group;
   const groupId = value => String(value).replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const names = { carvis: "Assistant behavior", tools: "Tool execution", ollama: "Local models", models: "Model roles", voice: "Conversation", stt: "Speech recognition", liveVoice: "Live voice", speech: "Speech & speakers", classifier: "Proactive decisions", sessions: "Activity sessions", memory: "Memory & patterns", search: "Search provider", atlas: "Project connection", mac: "Desktop connection", physicalCarvis: "Device connection", agent: "Device behavior", glasses: "Display & gestures" };
@@ -1604,12 +1605,19 @@ function configureIntegration(integration, host, {inline = false} = {}) {
     values[f.key] = { control, field: f, groupId: group.id };
     const description = [f.description, f.help, ["string-array", "string_array"].includes(f.type) ? "Enter one value per line." : f.type === "json" ? "Use JSON for lists or structured settings. Leave blank to keep the saved value; use [] or {} to clear it." : null].filter((text, index, all) => typeof text === "string" && text && all.indexOf(text) === index).join(" ");
     let destination = group.panel;
-    if (f.advanced || inline && sharedKeyId) {
+    if (f.advanced && f.key!=='agent__allowedDomains' || inline && sharedKeyId) {
       let advanced = group.panel.querySelector('.advanced-settings');
       if (!advanced) { advanced = el('details',{class:'advanced-settings'},el('summary',{},'Advanced settings'),el('p',{class:'small muted'},'Optional tuning. Keep the defaults unless you have a specific reason to change them.')); group.panel.append(advanced); }
       destination = advanced;
     }
-    destination.append(f.type === "boolean" ? el("label", { class: "field checkbox" }, control, el("span", {}, el("span", { class: "field-label" }, f.label || f.key), description ? el("span", { class: "field-description" }, description) : null)) : field(f.label || f.key, control, description));
+    if(f.key==='agent__allowedDomains') {
+      control.hidden=true;
+      const chosen=new Set(Array.isArray(value)?value:[]);
+      const domains=[...new Set([...chosen,'light','switch','fan','climate','cover','media_player','remote','scene','script','automation','input_boolean','input_number','input_select','button','number','select','lock','vacuum','humidifier','water_heater','siren','update'])].sort();
+      const picker=el('fieldset',{class:'device-type-picker'},el('legend',{},'Device types Carvis may control'),el('p',{class:'small muted'},'Type permission is only the first step. Also enable Interact for each device below. Observation is separate.'));
+      for(const domain of domains){const check=input(`allow-type-${domain}`,'','checkbox',{checked:chosen.has(domain)});check.addEventListener('change',()=>{check.checked?chosen.add(domain):chosen.delete(domain);control.value=[...chosen].join('\n');control.dispatchEvent(new Event('input'));});picker.append(el('label',{class:'device-type-option'},check,el('span',{},domain.replaceAll('_',' '))));}
+      destination.append(picker,control);
+    }else destination.append(f.type === "boolean" ? el("label", { class: "field checkbox" }, control, el("span", {}, el("span", { class: "field-label" }, f.label || f.key), description ? el("span", { class: "field-description" }, description) : null)) : field(f.label || f.key, control, description));
     if (f.key === "pairingToken" && integration.id === "even-realities") {
       const secretArea = el("div");
       const generate = button("Generate pairing token", async () => {
@@ -1626,7 +1634,7 @@ function configureIntegration(integration, host, {inline = false} = {}) {
       group.panel.append(generate, el("p", { class: "field-description" }, "Creates and saves a new token immediately. It replaces the previous token."), secretArea);
     }
   }
-  if (integration.id === "home-assistant") { entitySection = makeEntitySelector(cfg); getGroup({ key: "observed" }).panel.append(entitySection.node); }
+  if (integration.id === "home-assistant") { entitySection = makeEntitySelector(cfg, () => {const entry=values.agent__allowedDomains;return entry ? integrationFieldValue(entry.field,entry.control) : [];}); if(values.agent__allowedDomains)values.agent__allowedDomains.control.addEventListener('input',()=>entitySection.refresh()); getGroup({ key: "observed" }).panel.append(entitySection.node); }
   if (groups.size) {
     const rank = key => /connection|controller|credentials/.test(key) ? 0 : /^(stt|speech|devices|reply-behavior)$/.test(key) ? 1 : /models|tools|ollama|agent/.test(key) ? 4 : 2;
     const ordered = [...groups].sort(([a],[b])=>rank(a)-rank(b));
@@ -1674,19 +1682,21 @@ function configureIntegration(integration, host, {inline = false} = {}) {
   });
   host.replaceChildren(form);
 }
-function makeEntitySelector(config) {
+function makeEntitySelector(config, allowedTypes = () => config.agent__allowedDomains || []) {
   const observed = new Set(config.observed || []), controlled = new Set(config.controlled || []), guards = { ...(config.guards || {}) }, selected = new Set();
   const list = el('div', {class:'entity-table-scroll'}), rooms = el('div', {class:'entity-rooms',role:'group','aria-label':'Filter by room'}), count = el('p',{class:'entity-count'}), heading = el('h3'), feedback = el('div');
   const search = input('entity-search','','search',{placeholder:'Search entities…','aria-label':'Search entities'});
   const type = el('select',{'aria-label':'Filter entity type'},el('option',{value:''},'All types'));
   const only = input('entities-selected','','checkbox');
+  const showOther=input('entities-other-types','','checkbox');
+  const canControl=id=>allowedTypes().includes(id.split('.')[0]);
   let entities = [], loaded = false, room = '*';
   const label = value => String(value || '').replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase());
   const domainIcon = domain => ({media_player:'tv',camera:'glasses',lock:'lock',switch:'plug',light:'spark',sensor:'info',binary_sensor:'info'}[domain] || 'grid');
-  const visible = () => entities.filter(e => (room==='*' || (e.area_id || '')===room) && (!type.value || e.domain===type.value) && (!only.checked || observed.has(e.entity_id)) && `${e.name} ${e.entity_id} ${e.area_name || ''}`.toLowerCase().includes(search.value.toLowerCase()));
+  const visible = () => entities.filter(e => (showOther.checked || canControl(e.entity_id)) && (room==='*' || (e.area_id || '')===room) && (!type.value || e.domain===type.value) && (!only.checked || observed.has(e.entity_id)) && `${e.name} ${e.entity_id} ${e.area_name || ''}`.toLowerCase().includes(search.value.toLowerCase()));
   function setPermission(id, action) {
     if(action==='observe') observed.add(id);
-    if(action==='control'){observed.add(id);controlled.add(id);}
+    if(action==='control' && canControl(id)){observed.add(id);controlled.add(id);}
     if(action==='hide'){observed.delete(id);controlled.delete(id);delete guards[id];}
     if(action==='stop-control'){controlled.delete(id);delete guards[id];}
     if(action==='protected' && controlled.has(id))guards[id]='protected';
@@ -1696,8 +1706,10 @@ function makeEntitySelector(config) {
   bulk.addEventListener('change',()=>{if(!bulk.value)return;for(const e of visible())if(selected.has(e.entity_id))setPermission(e.entity_id,bulk.value);bulk.value='';render();});
   const selectAll=button('Select all shown',()=>{const rows=visible(),all=rows.length && rows.every(e=>selected.has(e.entity_id));for(const e of rows)all?selected.delete(e.entity_id):selected.add(e.entity_id);render();},'compact');
   function render(){
+    const typeValue=type.value;const types=[...new Set(entities.filter(e=>showOther.checked || canControl(e.entity_id)).map(e=>e.domain))].sort();
+    type.replaceChildren(el('option',{value:''},'All shown types'),...types.map(value=>el('option',{value},label(value))));type.value=types.includes(typeValue)?typeValue:'';
     const matches=visible();
-    count.textContent=`${matches.length} entities · ${observed.size} observed · ${controlled.size} interactive · ${matches.filter(e=>selected.has(e.entity_id)).length} marked for bulk edits`;
+    count.textContent=`${matches.length} entities · ${observed.size} observed · ${[...controlled].filter(canControl).length} interactive · ${matches.filter(e=>selected.has(e.entity_id)).length} marked for bulk edits`;
     heading.textContent=room==='*'?'All rooms':room===''?'Unassigned':entities.find(e=>e.area_id===room)?.area_name || room;
     rooms.replaceChildren();
     const areas=new Map(entities.filter(e=>e.area_id).map(e=>[e.area_id,e.area_name || e.area_id]));
@@ -1706,17 +1718,17 @@ function makeEntitySelector(config) {
     }
     selectAll.textContent=matches.length && matches.every(e=>selected.has(e.entity_id))?'Clear selection':'Select all shown';selectAll.disabled=!matches.length;bulk.disabled=!matches.some(e=>selected.has(e.entity_id));
     list.replaceChildren();
-    if(!matches.length){list.append(el('p',{class:'empty-card'},loaded?'No entities match these filters.':'Save the connection, then load entities to choose what Carvis can see.'));return;}
+    if(!matches.length){list.append(el('p',{class:'empty-card'},loaded?'No entities match these filters.':'Save your connection to see entities automatically.'));return;}
     const table=el('table',{class:'entity-table'}),body=el('tbody');
-    table.append(el('thead',{},el('tr',{},...['Select','Entity','Type','State','Observe','Interact','Guard'].map((s,i)=>el('th',{scope:'col'},s,...(i>=4?[el('small',{},['Can view state','Can control','Confirmation policy'][i-4])]:[]))))),body);
+    table.append(el('thead',{},el('tr',{},...['Bulk edit','Entity','Type','State','Observe','Interact','Guard'].map((s,i)=>el('th',{scope:'col'},s,...(i>=4?[el('small',{},['Can view state','Can control','Confirmation policy'][i-4])]:[]))))),body);
     for(const e of matches){
       const id=e.entity_id,name=e.name || id;
       const mark=input(`mark-${id}`,'','checkbox',{checked:selected.has(id),'aria-label':`Select ${name} for bulk edits`});mark.addEventListener('change',()=>{mark.checked?selected.add(id):selected.delete(id);render();});
       const see=input(`observe-${id}`,'','checkbox',{checked:observed.has(id),'aria-label':`Let Carvis see ${name}`});see.addEventListener('change',()=>{setPermission(id,see.checked?'observe':'hide');render();});
-      const control=input(`control-${id}`,'','checkbox',{checked:controlled.has(id),'aria-label':`Let Carvis control ${name}`});control.addEventListener('change',()=>{setPermission(id,control.checked?'control':'stop-control');render();});
-      const guard=el('select',{'aria-label':`Confirmation for ${name}`,disabled:!controlled.has(id)},...[['','Auto · device default'],['standard','Standard'],['protected','Require confirmation']].map(([value,text])=>el('option',{value,selected:(guards[id] || '')===value},text)));
+      const control=input(`control-${id}`,'','checkbox',{checked:controlled.has(id),'aria-label':`Let Carvis control ${name}`,disabled:!canControl(id),title:canControl(id)?'':'This device type is not allowed for control'});control.addEventListener('change',()=>{setPermission(id,control.checked?'control':'stop-control');render();});
+      const guard=el('select',{'aria-label':`Confirmation for ${name}`,disabled:!controlled.has(id)||!canControl(id)},...[['','Auto · device default'],['standard','Standard'],['protected','Require confirmation']].map(([value,text])=>el('option',{value,selected:(guards[id] || '')===value},text)));
       guard.addEventListener('change',()=>{if(guard.value)guards[id]=guard.value;else delete guards[id];});
-      body.append(el('tr',{'data-selected':selected.has(id)?'true':'false'},el('td',{},mark),el('td',{},el('div',{class:'entity-name-cell'},icon(domainIcon(e.domain)),el('div',{},el('strong',{},name),el('small',{},id)))),el('td',{},label(e.domain)),el('td',{},el('span',{class:`entity-state ${e.state==='on'?'is-on':''}`},e.state==null?'Unavailable':`${label(e.state)}${e.unit?' '+e.unit:''}`)),el('td',{},see),el('td',{},control),el('td',{},guard)));
+      body.append(el('tr',{'data-selected':selected.has(id)?'true':'false'},el('td',{},mark),el('td',{},el('div',{class:'entity-name-cell'},icon(domainIcon(e.domain)),el('div',{},el('strong',{},name),el('small',{},id)))),el('td',{},label(e.domain)),el('td',{},el('span',{class:`entity-state ${e.state==='on'?'is-on':''}`},e.state==null?'Unavailable':`${label(e.state)}${e.unit?' '+e.unit:''}`)),el('td',{},see),el('td',{},control,!canControl(id)?el('small',{class:'muted'},'Type blocked'):null),el('td',{},guard)));
     }
     list.append(table);
   }
@@ -1730,9 +1742,9 @@ function makeEntitySelector(config) {
       if(result.areaWarning)formNotice(feedback,result.areaWarning);load.textContent='Refresh entities';render();
     }catch(error){formNotice(feedback,errorText(error));}finally{load.disabled=false;}
   },'compact','refresh');
-  search.addEventListener('input',render);type.addEventListener('change',render);only.addEventListener('change',render);render();
+  search.addEventListener('input',render);type.addEventListener('change',render);only.addEventListener('change',render);showOther.addEventListener('change',render);render();
   if (config.baseUrl && (config.hasToken || config.token)) queueMicrotask(() => load.click());
-  return {node:el('section',{class:'entity-section entity-manager'},el('div',{class:'entity-manager-title'},icon('home'),el('div',{},el('h3',{},'Entity management'),el('p',{class:'small muted'},'Choose what Carvis can see and control. Changes apply when you save.')),load),rooms,el('div',{class:'entity-filterbar'},search,type,el('label',{class:'check-label'},only,'Show selected only')),feedback,el('div',{class:'entity-table-heading'},el('div',{},heading,count),el('div',{class:'action-row'},selectAll,bulk)),list,el('p',{class:'small muted'},'Rooms come from Home Assistant. State is a read-only snapshot. Unobserved entities remain hidden from Carvis. Guards keep the existing Auto, Standard, and Require confirmation behavior.')),value:()=>({observed:[...observed],controlled:[...controlled],guards})};
+  return {node:el('section',{class:'entity-section entity-manager'},el('div',{class:'entity-manager-title'},icon('home'),el('div',{},el('h3',{},'Entity management'),el('p',{class:'small muted'},'Choose what Carvis can see and control. Changes apply when you save.')),load),rooms,el('div',{class:'entity-filterbar'},search,type,el('label',{class:'check-label'},only,'Observed entities only'),el('label',{class:'check-label'},showOther,'Show other types (observe only)')),feedback,el('div',{class:'entity-table-heading'},el('div',{},heading,count),el('div',{class:'action-row'},selectAll,bulk)),list,el('p',{class:'small muted'},'Rooms come from Home Assistant. State is a read-only snapshot. Unobserved entities remain hidden from Carvis. Guards keep the existing Auto, Standard, and Require confirmation behavior.')),refresh:render,value:()=>({observed:[...observed],controlled:[...controlled],guards})};
 }
 
 function renderGlobalKeys() {
