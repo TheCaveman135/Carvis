@@ -1520,7 +1520,7 @@ function roomNotesControl(saved) {
   const rows=el('div',{class:'room-note-rows'}),entries=[];
   const add=(room='',note='')=>{
     const name=input('room',room,'text',{'aria-label':'Room or area name',placeholder:'Room name'}),text=el('textarea',{rows:2,'aria-label':'Room notes',placeholder:'Objects, landmarks, or details Carvis should recognize.'},String(note));
-    const row=el('div',{class:'room-note-row'},field('Room or area',name),field('Notes',text),button('Remove',()=>{entries.splice(entries.indexOf(entry),1);row.remove();},'quiet compact'));
+    const row=el('div',{class:'room-note-row'},field('Room or area',name),field('Notes',text),button('Remove',()=>{entries.splice(entries.indexOf(entry),1);row.remove();control.dispatchEvent(new Event('input',{bubbles:true}));},'quiet compact'));
     const entry={name,text};entries.push(entry);rows.append(row);
   };
   for(const [room,note] of Object.entries(saved))add(room,note);
@@ -1655,13 +1655,13 @@ function configureIntegration(integration, host, {inline = false} = {}) {
   }
   else form.append(el("p", { class: "small muted" }, "This integration has no additional settings."));
   if(inline && integration.fields.some(f=>f.key.startsWith('models__')))form.prepend(el('p',{class:'small muted'},'AI models and shared API keys are managed in ',el('a',{href:'#settings'},'Carvis Settings → Model Router'),' .'));
-  const collectConfig = () => {
+  const collectConfig = (interactive = true) => {
     const config = {};
     for (const [key, entry] of Object.entries(values)) {
       const { control, field: definition, groupId } = entry;
-      if (!control.checkValidity()) { activate(groupId); const folded=control.closest('details'); if(folded)folded.open=true; control.reportValidity(); throw new Error(`${definition.label || key}: ${control.validationMessage}`); }
+      if (!control.checkValidity()) { if(!interactive)throw new Error(`${definition.label || key}: ${control.validationMessage}`); activate(groupId); const folded=control.closest('details'); if(folded)folded.open=true; control.reportValidity(); throw new Error(`${definition.label || key}: ${control.validationMessage}`); }
       try { const value = integrationFieldValue(definition, control); if (value !== undefined) config[key] = value; }
-      catch (error) { control.setCustomValidity(errorText(error)); activate(groupId); const folded=control.closest('details'); if(folded)folded.open=true; control.reportValidity(); throw error; }
+      catch (error) { if(!interactive)throw error; control.setCustomValidity(errorText(error)); activate(groupId); const folded=control.closest('details'); if(folded)folded.open=true; control.reportValidity(); throw error; }
     }
     if (entitySection) Object.assign(config, entitySection.value());
     return config;
@@ -1672,16 +1672,36 @@ function configureIntegration(integration, host, {inline = false} = {}) {
     try { const result = await api(`/api/integrations/${encodeURIComponent(integration.id)}/test`, { method: "POST" }); formNotice(feedback, result.message || result.error || (result.success ? "Connection successful." : "Could not connect."), result.success); }
     catch (error) { formNotice(feedback, errorText(error)); } finally { test.disabled = false; }
   }, "", "refresh");
-  form.append(permissions, feedback, el("div", { class: "modal-footer" }, test, save));
-  form.addEventListener("submit", async event => {
-    event.preventDefault(); save.disabled = true; feedback.replaceChildren();
+  const saveStatus=el('span',{class:'small muted',role:'status','aria-live':'polite'},'Changes save automatically');
+  save.textContent='Save now';
+  form.append(permissions, feedback, el("div", { class: "modal-footer" }, saveStatus, test, save));
+  let baseline;
+  try {baseline=structuredClone(collectConfig(false));}catch {baseline={...cfg};}
+  let timer, saving=false, queued=false;
+  const persist=async(interactive=false)=>{
+    clearTimeout(timer);
+    if(saving){queued=true;return;}
+    let snapshot;
+    try {snapshot=structuredClone(collectConfig(interactive));}catch(error){saveStatus.textContent='Not saved — finish the highlighted fields';formNotice(feedback,errorText(error));return;}
+    const patch=Object.fromEntries(Object.entries(snapshot).filter(([key,value])=>JSON.stringify(value)!==JSON.stringify(baseline[key])));
+    if(!Object.keys(patch).length){saveStatus.textContent='All changes saved';return;}
+    saving=true;save.disabled=true;saveStatus.textContent='Saving…';feedback.replaceChildren();
     try {
-      const config = collectConfig();
-      if (enabled.checked && requiredMissing.length) throw new Error(`Enable ${requiredMissing.map(item => item.name).join(", ")} before enabling ${integration.name}.`);
-      await api(`/api/integrations/${encodeURIComponent(integration.id)}`, { method: "PUT", body: { enabled: enabled.checked, config } });
-      await refreshState(); await route(); toast(`${integration.name} settings saved.`);
-    } catch (error) { formNotice(feedback, errorText(error)); } finally { save.disabled = false; }
-  });
+      await api(`/api/integrations/${encodeURIComponent(integration.id)}`,{method:'PUT',body:{config:patch}});
+      Object.assign(baseline,patch);
+      for(const [key,value] of Object.entries(patch)){
+        const entry=values[key];
+        if(entry?.field.type==='password' && value && entry.control.value===value){entry.control.value='';entry.control.required=false;entry.control.placeholder='Saved · leave blank to keep';baseline[key]='';}
+      }
+      await refreshState();saveStatus.textContent='Saved';
+    }catch(error){saveStatus.textContent='Not saved — retry';formNotice(feedback,errorText(error));}
+    finally {saving=false;save.disabled=false;if(queued){queued=false;void persist();}}
+  };
+  const scheduleSave=()=>{clearTimeout(timer);saveStatus.textContent='Unsaved changes…';timer=setTimeout(()=>void persist(),700);};
+  // Capture before entity controls rebuild their rows, then read the updated values after the debounce.
+  form.addEventListener('input',scheduleSave,true);
+  form.addEventListener('change',scheduleSave,true);
+  form.addEventListener('submit',event=>{event.preventDefault();void persist(true);});
   host.replaceChildren(form);
 }
 function makeEntitySelector(config, allowedTypes = () => config.agent__allowedDomains || []) {
@@ -1746,7 +1766,7 @@ function makeEntitySelector(config, allowedTypes = () => config.agent__allowedDo
   },'compact','refresh');
   search.addEventListener('input',render);type.addEventListener('change',render);only.addEventListener('change',render);showOther.addEventListener('change',render);render();
   if (config.baseUrl && (config.hasToken || config.token)) queueMicrotask(() => load.click());
-  return {node:el('section',{class:'entity-section entity-manager'},el('div',{class:'entity-manager-title'},icon('home'),el('div',{},el('h3',{},'Entity management'),el('p',{class:'small muted'},'Choose what Carvis can see and control. Changes apply when you save.')),load),rooms,el('div',{class:'entity-filterbar'},search,type,el('label',{class:'check-label'},only,'Observed entities only'),el('label',{class:'check-label'},showOther,'Show other types (observe only)')),feedback,el('div',{class:'entity-table-heading'},el('div',{},heading,count),el('div',{class:'action-row'},selectAll,bulk)),list,el('p',{class:'small muted'},'Rooms come from Home Assistant. State is a read-only snapshot. Unobserved entities remain hidden from Carvis. Guards keep the existing Auto, Standard, and Require confirmation behavior.')),refresh:render,value:()=>({observed:[...observed],controlled:[...controlled],guards})};
+  return {node:el('section',{class:'entity-section entity-manager'},el('div',{class:'entity-manager-title'},icon('home'),el('div',{},el('h3',{},'Entity management'),el('p',{class:'small muted'},'Choose what Carvis can see and control. Changes save automatically.')),load),rooms,el('div',{class:'entity-filterbar'},search,type,el('label',{class:'check-label'},only,'Observed entities only'),el('label',{class:'check-label'},showOther,'Show other types (observe only)')),feedback,el('div',{class:'entity-table-heading'},el('div',{},heading,count),el('div',{class:'action-row'},selectAll,bulk)),list,el('p',{class:'small muted'},'Rooms come from Home Assistant. State is a read-only snapshot. Unobserved entities remain hidden from Carvis. Guards keep the existing Auto, Standard, and Require confirmation behavior.')),refresh:render,value:()=>({observed:[...observed],controlled:[...controlled],guards})};
 }
 
 function renderGlobalKeys() {
