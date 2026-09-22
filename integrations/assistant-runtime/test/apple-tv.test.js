@@ -127,3 +127,30 @@ test('a fresh controller has an idle state while a missing requested task remain
   assert.equal((await h.tv.status()).status,'idle');
   await assert.rejects(()=>h.tv.status('missing-task'),/no longer/);
 });
+
+test('selected screen preview reads the allowed camera without changing controller state',async()=>{
+ const h=fixture(),reads=[];
+ h.tv.getConfig=()=>({appleTv:{...TEST_TV,cameraEntity:'camera.screen'},entities:{observed:['camera.screen'],controlled:[]}});
+ h.ha.cameraImage=async(...args)=>{reads.push(args);return {bytes:Buffer.from([137,80,78,71]),contentType:'image/png'};};
+ const image=await h.tv.preview();
+ assert.equal(image.contentType,'image/png');assert.equal(image.bytes.length,4);
+ assert.deepEqual(reads,[['camera.screen',{maxBytes:6*1024*1024}]]);
+ assert.equal(h.requests.length,0);assert.equal(h.auth.length,0);
+});
+
+test('screen preview respects camera permission revocation without falling back to another feed',async()=>{
+ const h=fixture();let reads=0;
+ const cfg={appleTv:{...TEST_TV,cameraEntity:'camera.screen'},entities:{observed:['camera.screen']}};
+ h.tv.getConfig=()=>cfg;h.ha.cameraImage=async()=>{reads++;return {bytes:Buffer.from([255]),contentType:'image/jpeg'};};
+ await h.tv.frame();cfg.entities.observed=[];
+ await assert.rejects(()=>h.tv.frame(),/Enable Observe/);
+ assert.equal(reads,1);assert.equal(h.requests.length,0);
+});
+
+test('screen preview rejects empty or non-image camera responses',async()=>{
+ const h=fixture();h.tv.getConfig=()=>({appleTv:{...TEST_TV,cameraEntity:'camera.screen'},entities:{observed:['camera.screen']}});
+ for(const frame of [{bytes:Buffer.from('login'),contentType:'text/html'},{bytes:Buffer.alloc(0),contentType:'image/jpeg'}]){
+  h.ha.cameraImage=async()=>frame;await assert.rejects(()=>h.tv.preview(),/supported screen image/);
+ }
+ assert.equal(h.requests.length,0);
+});

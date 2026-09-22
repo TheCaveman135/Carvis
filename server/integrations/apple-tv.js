@@ -290,7 +290,7 @@ export default {
     "Read controller task status",
   ],
   fields: [
-    {key:'cameraEntity',label:'Screen capture / camera',type:'text',description:'Choose the HA camera showing this TV, including an HDMI capture card. Allow Observe access in Home Assistant. Applied before screen previews and new tasks; leave blank to use the controller’s existing feed.'},
+    {key:'cameraEntity',label:'Screen capture / camera',type:'text',description:'Choose the HA camera showing this TV, including an HDMI capture card. Allow Observe access in Home Assistant. Used directly for screen previews and applied to the controller before new tasks; leave blank to use the controller’s existing feed.'},
     {
       key: "addonSlug",
       label: "Home Assistant add-on slug",

@@ -91,9 +91,31 @@ export async function mount(ui) {
   async function tv() {
     let run, polling=false;
     try{run=await get('/api/tv/status');}catch(error){content.append(card('TV controller',error.message));return;}
-    const image=el('img',{class:'tv-frame',alt:'Current TV screen',src:base+'/api/tv/frame?t='+Date.now()});
-    const refresh=action('Refresh screen',async()=>{image.hidden=false;image.src=base+'/api/tv/frame?t='+Date.now();});
-    image.addEventListener('error',()=>{image.hidden=true;refresh.textContent='Retry screen preview';});
+    let previewUrl='',previewBusy=false;
+    const image=el('img',{class:'tv-frame',alt:'Current TV screen',hidden:true});
+    const previewStatus=el('p',{class:'small muted',role:'status'},'Loading screen…');
+    const previewSettings=el('a',{href:'#settings/home-assistant',class:'button quiet compact',hidden:true},'Camera access settings');
+    async function loadPreview(){
+      if(previewBusy||signal.aborted)return;
+      previewBusy=true;refresh.disabled=true;previewStatus.textContent='Loading screen…';previewSettings.hidden=true;
+      try{
+        const response=await fetch(base+'/api/tv/frame',{cache:'no-store',signal});
+        if(!response.ok){
+          const problem=await response.json().catch(()=>({}));
+          previewSettings.hidden=response.status!==403;
+          throw Error(problem.message || 'Screen preview unavailable. Try again.');
+        }
+        if(!response.headers.get('content-type')?.startsWith('image/'))throw Error('The camera returned an invalid screen image.');
+        const blob=await response.blob();if(signal.aborted)return;
+        if(previewUrl)URL.revokeObjectURL(previewUrl);
+        previewUrl=URL.createObjectURL(blob);image.src=previewUrl;await image.decode();
+        if(signal.aborted)return;
+        image.hidden=false;refresh.textContent='Refresh screen';
+        previewStatus.textContent=`Snapshot · ${new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'})}`;
+      }catch(error){if(!signal.aborted){image.hidden=true;previewStatus.textContent=error.message;refresh.textContent='Retry screen preview';}}
+      finally{previewBusy=false;refresh.disabled=false;}
+    }
+    const refresh=action('Refresh screen',loadPreview);
     const taskGoal=el('p'),taskStatus=el('p',{role:'status'}),taskMessage=el('p');
     const goal=el('textarea',{required:true,rows:3,placeholder:'Find a film, open an app, or describe a task.'});
     const context=el('textarea',{required:true,rows:2,placeholder:'For example: Try Netflix instead of Prime.'});
@@ -114,9 +136,10 @@ export async function mount(ui) {
     }
     async function poll(){if(polling || signal.aborted)return;polling=true;try{const next=await get('/api/tv/status');if(!signal.aborted)update(next);}catch(error){if(!signal.aborted){taskStatus.textContent='Connection lost. Refresh before sending another command.';for(const control of [...remoteButtons,...playback,...start.querySelectorAll('button'),...guidance.querySelectorAll('button'),stop]){control.dataset.locked='true';control.disabled=true;}}}finally{polling=false;}}
     update(run);
-    content.append(el('div',{class:'control-two-column'},card('TV screen','Refresh the preview to see the current screen.',image,refresh),card('Current task','Progress refreshes automatically without clearing what you are typing.',taskGoal,taskStatus,taskMessage,stop,start,guidance,el('details',{class:'control-details'},el('summary',{},'Task progress'),progress))));
+    content.append(el('div',{class:'control-two-column'},card('TV screen','A snapshot from your selected screen camera.',image,previewStatus,el('div',{class:'action-row'},refresh,previewSettings)),card('Current task','Progress refreshes automatically without clearing what you are typing.',taskGoal,taskStatus,taskMessage,stop,start,guidance,el('details',{class:'control-details'},el('summary',{},'Task progress'),progress))));
     content.append(card('Remote','Every button goes through TV AI Controller in Home Assistant.',el('div',{class:'tv-remote'},remoteButtons),el('div',{class:'action-row'},playback),el('p',{class:'small muted'},'Change navigation silence and playback replies in Settings → Reply behavior.')));
-    const timer=setInterval(poll,3000);dispose=()=>clearInterval(timer);
+    void loadPreview();
+    const timer=setInterval(poll,3000);dispose=()=>{clearInterval(timer);if(previewUrl)URL.revokeObjectURL(previewUrl);};
   }
   async function protocols(snapshot) {
     const state=snapshot.automations || await get('/api/automations');

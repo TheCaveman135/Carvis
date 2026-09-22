@@ -723,9 +723,9 @@ const routes = {
   },
   'GET /api/tv/frame': async (_req,res)=>{
     const cfg=loadConfig();
-    if(![...(cfg.entities.observed || []),...(cfg.entities.controlled || [])].includes(cfg.appleTv?.cameraEntity || cfg.appleTv?.mediaPlayer))return sendJson(res,404,{message:'TV preview is unavailable.'});
-    try {const bytes=await ha.appleTv.frame();res.writeHead(200,{'Content-Type':'image/jpeg','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(bytes);}
-    catch {sendJson(res,503,{message:'TV preview is unavailable. Try refreshing.'});}
+    if(![...(cfg.entities.observed || []),...(cfg.entities.controlled || [])].includes(cfg.appleTv?.cameraEntity || cfg.appleTv?.mediaPlayer))return sendJson(res,403,{message:cfg.appleTv?.cameraEntity?'Enable Observe for the selected screen camera in Settings → Home Assistant → Entities.':'Select a TV for Observe access in Settings → Home Assistant → Entities.'});
+    try {const frame=await ha.appleTv.preview();res.writeHead(200,{'Content-Type':frame.contentType,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(frame.bytes);}
+    catch {sendJson(res,503,{message:'Could not read the TV screen. Check that the selected capture-card camera is available in Home Assistant, then retry.'});}
   },
 
   'POST /api/carvis/clear': async (req, res) => {

@@ -33,3 +33,5 @@ Carvis authenticates against HA's WebSocket API, calls `supervisor/api` with `GE
 Context is applied when `applied_context_revision >= context_revision`. A command response means the controller accepted/executed the request; it does not prove the intended screen is visible. Completed visual tasks may include `completion_check: {confirmed:true, ...}`.
 
 Uncertain network delivery and busy responses are never automatically retried, avoiding duplicate button presses or tasks. Ask for status before retrying.
+
+Screen previews read the explicitly selected HA camera directly, without changing the controller’s source or interrupting a running task. The camera needs Observe access in Settings → Home Assistant → Entities. Missing access is shown in the preview with a settings link; failed snapshots are hidden rather than presented as current. The preview displays a timestamp and supports retry. With no explicit camera selected, the controller’s existing frame endpoint is used.

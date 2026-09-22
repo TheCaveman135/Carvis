@@ -64,7 +64,21 @@ export class AppleTvController {
     await this.request('/api/screen-source',{camera_entity:camera});
   }
 
-  async frame() {await this.syncScreenSource();return this.request('/api/frame',undefined,{image:true});}
+  async preview() {
+    const config=this.getConfig(),camera=config.appleTv?.cameraEntity;
+    if(camera){
+      if(!/^camera\.[a-z0-9_]+$/.test(camera)||![...(config.entities?.observed || []),...(config.entities?.controlled || [])].includes(camera)){
+        throw Error('Enable Observe for the selected screen camera in Settings → Home Assistant → Entities.');
+      }
+      // A preview is read-only: it must not change the controller's source or task.
+      const frame=await this.ha.cameraImage(camera,{maxBytes:6*1024*1024});
+      if(!/^image\/(jpeg|png|webp)(?:;|$)/i.test(frame.contentType)||!frame.bytes.length)throw Error('The selected camera did not return a supported screen image.');
+      return frame;
+    }
+    return {bytes:await this.request('/api/frame',undefined,{image:true}),contentType:'image/jpeg'};
+  }
+
+  async frame() {return (await this.preview()).bytes;}
 
   async command(domain, service, data) {
     const {entity_id, ...args} = data;
