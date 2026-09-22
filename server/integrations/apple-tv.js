@@ -29,10 +29,12 @@ export function validateConfig(config = {}) {
       !mediaPlayerEntity.startsWith("media_player."))
   )
     throw Error("The media-player entity must be a media_player entity ID.");
+  const cameraEntity=String(config.cameraEntity || '').trim();
+  if(cameraEntity && !/^camera\.[a-z0-9_]+$/.test(cameraEntity))throw Error('Select a Home Assistant camera entity for the screen feed.');
   const context = String(config.context || "").trim();
   if (context.length > 6000)
     throw Error("Keep TV context under 6,000 characters.");
-  return { addonSlug, remoteEntity, mediaPlayerEntity, context, silentNavigation: config.silentNavigation !== false, shortReplies: config.shortReplies !== false };
+  return { cameraEntity, addonSlug, remoteEntity, mediaPlayerEntity, context, silentNavigation: config.silentNavigation !== false, shortReplies: config.shortReplies !== false };
 }
 function home(ctx) {
   if (!ctx.registry?.getConfig)
@@ -146,6 +148,11 @@ export async function connectIngress(ctx, config, ha) {
   });
 }
 async function request(ctx, path, body) {
+  const camera=validateConfig(ctx.config).cameraEntity;
+  if(camera && path==='/api/start'){
+    await readState(home(ctx),camera,false);
+    await request(ctx,'/api/screen-source',{camera_entity:camera});
+  }
   const config = validateConfig(ctx.config),
     ha = home(ctx).config,
     key = JSON.stringify([ha.baseUrl, ha.token, config.addonSlug]);
@@ -283,6 +290,7 @@ export default {
     "Read controller task status",
   ],
   fields: [
+    {key:'cameraEntity',label:'Screen capture / camera',type:'text',description:'Choose the HA camera showing this TV, including an HDMI capture card. Allow Observe access in Home Assistant. Applied before screen previews and new tasks; leave blank to use the controller’s existing feed.'},
     {
       key: "addonSlug",
       label: "Home Assistant add-on slug",

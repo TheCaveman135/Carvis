@@ -288,3 +288,8 @@ test("TV uncertain mutation and busy responses are never retried automatically",
     assert.equal(mutations, 1);
   }
 });
+
+test('screen capture accepts camera IDs and rejects media players',()=>{
+ assert.equal(validateConfig({remoteEntity:'remote.tv',cameraEntity:'camera.hdmi'}).cameraEntity,'camera.hdmi');
+ assert.throws(()=>validateConfig({remoteEntity:'remote.tv',cameraEntity:'media_player.tv'}),/camera entity/);
+});

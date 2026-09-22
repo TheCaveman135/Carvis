@@ -1616,17 +1616,17 @@ function configureIntegration(integration, host, {inline = false} = {}) {
       };
       queueMicrotask(()=>void control.loadModels());
     }
-    if(integration.id==='apple-tv'&&['remoteEntity','mediaPlayerEntity'].includes(f.key)){
-      control=el('select',{name:f.key},el('option',{value:''},f.key==='remoteEntity'?'Choose a remote':'No media player'),...(value?[el('option',{value,selected:true},`${value} (saved)`)]:[]));
+    if(integration.id==='apple-tv'&&['remoteEntity','mediaPlayerEntity','cameraEntity'].includes(f.key)){
+      control=el('select',{name:f.key},el('option',{value:''},f.key==='cameraEntity'?'Use controller’s existing feed':f.key==='remoteEntity'?'Choose a remote':'No media player'),...(value?[el('option',{value,selected:true},`${value} (saved)`)]:[]));
       queueMicrotask(async()=>{
         try{
           const ha=state.data.integrations.find(i=>i.id==='home-assistant');
           if(!ha?.enabled)throw Error('Enable Home Assistant to discover TV devices.');
           const result=await api('/api/integrations/home-assistant/entities');
-          const domain=f.key==='remoteEntity'?'remote.':'media_player.';
+          const domain=f.key==='cameraEntity'?'camera.':f.key==='remoteEntity'?'remote.':'media_player.';
           const devices=result.entities.filter(e=>e.entity_id.startsWith(domain));
           const current=control.value;
-          control.replaceChildren(el('option',{value:''},f.key==='remoteEntity'?'Choose a remote':'No media player'),...devices.map(e=>el('option',{value:e.entity_id},`${e.name || e.entity_id} (${e.entity_id})`)));
+          control.replaceChildren(el('option',{value:''},f.key==='cameraEntity'?'Use controller’s existing feed':f.key==='remoteEntity'?'Choose a remote':'No media player'),...devices.map(e=>el('option',{value:e.entity_id},`${e.name || e.entity_id} (${e.entity_id})`)));
           if(current&&!devices.some(e=>e.entity_id===current))control.append(el('option',{value:current},`${current} (unavailable)`));
           control.value=current;
           if(!devices.length)control.parentElement?.append(el('span',{class:'field-description'},'No matching Home Assistant devices found.'));

@@ -1,0 +1,37 @@
+--- a/app.py
++++ b/app.py
+@@ -132 +132,6 @@
+-        self.o = options
++        self.o = dict(options)
++        try:
++            saved=json.loads((Path(data_dir)/'screen-source.json').read_text())
++            camera=saved.get('camera_entity','')
++            if isinstance(camera,str) and re.fullmatch(r'camera\.[a-z0-9_]+',camera):self.o['camera_entity']=camera
++        except (OSError,ValueError):pass
+@@ -170,0 +176,18 @@
++    async def set_screen_source(self, camera):
++        if not isinstance(camera,str) or not re.fullmatch(r'camera\.[a-z0-9_]+',camera):
++            raise web.HTTPBadRequest(text='Choose a Home Assistant camera entity')
++        if camera == self.o.get('camera_entity'):return {'camera_entity':camera}
++        if self.command_busy or (self.task and not self.task.done()):
++            raise web.HTTPConflict(text='Stop the current TV task before changing its screen feed')
++        state=await self.ha('GET','states/'+camera)
++        if state.get('state') in ['unavailable','unknown']:
++            raise web.HTTPBadRequest(text='The selected camera is unavailable')
++        if self.command_busy or (self.task and not self.task.done()):
++            raise web.HTTPConflict(text='A TV task started while checking the camera; source unchanged')
++        self.data.mkdir(parents=True,exist_ok=True)
++        temp=self.data/'screen-source.tmp'
++        temp.write_text(json.dumps({'camera_entity':camera}));temp.chmod(0o600)
++        temp.replace(self.data/'screen-source.json')
++        self.o['camera_entity']=camera
++        return {'camera_entity':camera}
++
+@@ -491,0 +515,4 @@
++    async def screen_source(request):
++        body=await request.json()
++        if not isinstance(body,dict):raise web.HTTPBadRequest(text='Expected an object')
++        return web.json_response(await controller.set_screen_source(body.get('camera_entity')))
+@@ -532 +559 @@
+-                    web.get('/api/frame', frame), web.post('/api/start', start), web.post('/api/stop', stop),
++                    web.get('/api/frame', frame), web.post('/api/screen-source', screen_source), web.post('/api/start', start), web.post('/api/stop', stop),

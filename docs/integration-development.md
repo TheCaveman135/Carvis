@@ -104,3 +104,14 @@ TTS service. Local playback suppresses local transcription to avoid self-trigger
 Even glasses become an input choice when their integration is enabled and keep
 using the companion's own audio transport. Other platforms retain companion and
 HA audio; native device capture/playback currently supports macOS only.
+
+### TV screen source
+
+TV AI Controller has a Home Assistant camera selector (`cameraEntity`). Blank keeps
+its existing controller feed. A selected camera must have Observe access; Carvis
+applies it before previews or new visual tasks using authenticated ingress
+`POST /api/screen-source` with `{camera_entity: "camera.example"}`. The controller
+must support that API. Existing deployments of the separate Python add-on can
+apply `docs/controller-upgrades/screen-source.patch` and rebuild the add-on.
+The update persists the choice and refuses source changes during running tasks.
+No model command or remote press is sent when changing the screen source.

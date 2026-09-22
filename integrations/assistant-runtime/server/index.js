@@ -713,7 +713,7 @@ const routes = {
   },
   'GET /api/tv/frame': async (_req,res)=>{
     const cfg=loadConfig();
-    if(![...(cfg.entities.observed || []),...(cfg.entities.controlled || [])].includes(cfg.appleTv?.mediaPlayer))return sendJson(res,404,{message:'TV preview is unavailable.'});
+    if(![...(cfg.entities.observed || []),...(cfg.entities.controlled || [])].includes(cfg.appleTv?.cameraEntity || cfg.appleTv?.mediaPlayer))return sendJson(res,404,{message:'TV preview is unavailable.'});
     try {const bytes=await ha.appleTv.frame();res.writeHead(200,{'Content-Type':'image/jpeg','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(bytes);}
     catch {sendJson(res,503,{message:'TV preview is unavailable. Try refreshing.'});}
   },

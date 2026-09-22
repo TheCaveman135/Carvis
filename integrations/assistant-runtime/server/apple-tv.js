@@ -57,7 +57,14 @@ export class AppleTvController {
     try {return await response.json();} catch {throw Error('Apple TV AI returned an unreadable result. Check status before retrying.');}
   }
 
-  async frame() {return this.request('/api/frame',undefined,{image:true});}
+  async syncScreenSource(){
+    const config=this.getConfig(),camera=config.appleTv?.cameraEntity;
+    if(!camera)return;
+    if(!/^camera\.[a-z0-9_]+$/.test(camera)||![...(config.entities?.observed || []),...(config.entities?.controlled || [])].includes(camera))throw Error('Allow Observe access to the screen camera in Home Assistant first.');
+    await this.request('/api/screen-source',{camera_entity:camera});
+  }
+
+  async frame() {await this.syncScreenSource();return this.request('/api/frame',undefined,{image:true});}
 
   async command(domain, service, data) {
     const {entity_id, ...args} = data;
@@ -68,6 +75,7 @@ export class AppleTvController {
   }
 
   async start(goal, ctx = {}) {
+    await this.syncScreenSource();
     const context = String(this.getConfig().appleTv?.context || '').trim().slice(0,6000);
     const scopedGoal = context ? `${goal}\n\nOwner-provided TV context:\n${context}` : goal;
     const run = await this.request('/api/start', {goal:scopedGoal, request_id:randomUUID()});
