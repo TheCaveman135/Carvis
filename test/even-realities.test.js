@@ -75,7 +75,7 @@ const press = (widget, more = {}) => ({
   ...more,
 });
 
-test("Even settings require user supplied secure pairing and optional speech configuration", () => {
+test("Even settings require secure pairing without a second speech provider", () => {
   const { ctx } = context();
   assert.equal(even.validateConfig(ctx.config), ctx.config);
   assert.throws(
@@ -90,10 +90,8 @@ test("Even settings require user supplied secure pairing and optional speech con
       }),
     /HTTPS/,
   );
-  assert.throws(
-    () => even.validateConfig({ ...ctx.config, microphoneEnabled: true }),
-    /Voice needs/,
-  );
+  assert.equal(even.validateConfig(ctx.config), ctx.config);
+  assert(!even.fields.some(field => field.key.startsWith('speech') || field.key === 'microphoneEnabled'));
 });
 test("widgets keep display and interaction separate and reject invalid controls", () => {
   const widget = normalizeWidget({
@@ -317,34 +315,58 @@ test("PCM conversion produces a bounded valid WAV header", () => {
     /30 seconds/,
   );
 });
-test("audio stays disabled until configured and transcription uses the chosen provider", async () => {
-  const { ctx } = context();
-  await assert.rejects(
-    () =>
-      route(ctx, "/audio", {
-        pcmBase64: Buffer.alloc(16000).toString("base64"),
-      }),
-    /Enable microphone/,
-  );
-  Object.assign(ctx.config, {
-    microphoneEnabled: true,
-    speechBaseUrl: "https://speech.example/v1",
-    speechApiKey: "unit-test-placeholder",
-    speechModel: "configured-speech-model",
-  });
-  ctx.fetch = async (url, options) => {
-    assert.equal(url, "https://speech.example/v1/audio/transcriptions");
-    assert.equal(options.body.get("model"), "configured-speech-model");
-    assert.equal(options.body.get("file").type, "audio/wav");
-    return new Response(JSON.stringify({ text: "Turn the light on" }), {
-      status: 200,
-    });
+function sharedVoice(ctx) {
+  const config = {profile:{},model:{},integrations:{
+    'assistant-engine':{enabled:true,config:{}},
+    voice:{enabled:true,config:{voice__enabled:true,voice__inputMuted:false,voice__inputDevice:'even-glasses',stt__enabled:true,stt__engine:'deepgram',stt__model:'nova-3'}},
+  },apiKeys:{deepgram:'global-test-key'}};
+  ctx.registry.store={config,plugin:()=>({get:(_key,fallback)=>fallback})};
+  ctx.registry.available=id=>config.integrations[id]?.enabled && config.integrations['assistant-engine'].enabled;
+  return config;
+}
+test("glasses audio uses the shared Voice provider, model and rotating global key", async () => {
+  const {ctx} = context();
+  const audio={pcmBase64:Buffer.alloc(16000).toString('base64')};
+  await assert.rejects(()=>route(ctx,'/audio',audio),/Enable Voice/);
+  const config=sharedVoice(ctx);
+  let expectedKey='global-test-key',calls=0;
+  ctx.config.speechApiKey='obsolete-key-that-must-not-be-used';
+  ctx.fetch=async(url,options)=>{
+    calls++;
+    assert.equal(new URL(url).hostname,'api.deepgram.com');
+    assert.equal(new URL(url).searchParams.get('model'),'nova-3');
+    assert.equal(options.headers.Authorization,`Token ${expectedKey}`);
+    assert.equal(options.body.toString('ascii',0,4),'RIFF');
+    return Response.json({results:{channels:[{alternatives:[{transcript:'Hello Carvis',confidence:.99}]}]}});
   };
-  const result = await route(ctx, "/audio", {
-    pcmBase64: Buffer.alloc(16000).toString("base64"),
-  });
-  assert.equal(result.transcript, "Turn the light on");
-  assert.equal(result.reply, "Reply to Turn the light on");
+  let result=await route(ctx,'/audio',audio);
+  assert.equal(result.transcript,'Hello Carvis');assert.equal(result.reply,'Reply to Hello Carvis');
+  config.apiKeys.deepgram=expectedKey='rotated-global-key';
+  await route(ctx,'/audio',audio);assert.equal(calls,2);
+  assert.equal((await route(ctx,'/feed',{},'GET')).voiceEnabled,true);
+  config.integrations.voice.config.voice__inputMuted=true;
+  await assert.rejects(()=>route(ctx,'/audio',audio),/Enable Voice/);
+  assert.equal((await route(ctx,'/feed',{},'GET')).voiceEnabled,false);
+  config.integrations.voice.config.voice__inputMuted=false;
+  config.integrations.voice.config.voice__inputDevice='local:synthetic';
+  await assert.rejects(()=>route(ctx,'/audio',audio),/Enable Voice/);
+  config.integrations.voice.config.voice__inputDevice='even-glasses';
+  config.integrations.voice.enabled=false;
+  await assert.rejects(()=>route(ctx,'/audio',audio),/Enable Voice/);
+  config.integrations.voice.enabled=true;
+  delete config.apiKeys.deepgram;
+  await assert.rejects(()=>route(ctx,'/audio',audio),/Enable Voice/);
+  assert.equal(calls,2);
+});
+test('glasses do not act if microphone access changes during transcription',async()=>{
+ const {ctx}=context();const config=sharedVoice(ctx);let chatted=false;
+ ctx.chat=async()=>{chatted=true;};
+ ctx.fetch=async()=>{
+  config.integrations.voice.config.voice__inputMuted=true;
+  return Response.json({results:{channels:[{alternatives:[{transcript:'Turn on the light'}]}]}});
+ };
+ await assert.rejects(()=>route(ctx,'/audio',{pcmBase64:Buffer.alloc(16000).toString('base64')}),/during transcription/);
+ assert.equal(chatted,false);
 });
 test("gesture order is numeric and double tap discards edits without removing widgets", () => {
   const focus = new WidgetFocus();

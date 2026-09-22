@@ -2,9 +2,8 @@ import {projectRuntimeConfig,runtimeEnvironment} from './assistant-config.js';
 import {endpoint} from './validation.js';
 export async function integrationModels(input,store,registry,fetcher=fetch){
  const module=registry.modules.get(input.integrationId);
- if(!module?.fields.some(f=>f.key===input.field && (f.key==='model'||f.key.endsWith('__model')||f.key==='speechModel')))throw Error('Unknown integration model field.');
+ if(!module?.fields.some(f=>f.key===input.field && (f.key==='model'||f.key.endsWith('__model'))))throw Error('Unknown integration model field.');
  const cfg=projectRuntimeConfig(store),env=runtimeEnvironment(store);
- const saved=store.config.integrations[input.integrationId]?.config || {};
  let url,headers={},kind='openai';
  if(input.field.startsWith('models__roles__')){
    const role=input.field.split('__')[2];
@@ -26,9 +25,6 @@ export async function integrationModels(input,store,registry,fetcher=fetch){
  }else if(input.field==='stt__model'){
    if(cfg.stt.engine==='assemblyai')return {models:['universal-3-5-pro'],note:'Models supported by Carvis’s AssemblyAI audio endpoint.'};
    kind='deepgram';url='https://api.deepgram.com/v1/models';headers={Authorization:`Token ${cfg.stt.deepgramKey || ''}`};
- }else if(input.field==='speechModel'){
-   if(!saved.speechBaseUrl)throw Error('Set the speech API address first.');
-   url=endpoint(saved.speechBaseUrl)+'/models';if(saved.speechApiKey)headers.Authorization=`Bearer ${saved.speechApiKey}`;
  }else throw Error('Model discovery is not configured for this field.');
  const models=[];const seen=new Set();
  for(let page=0;url&&page<20;page++){

@@ -74,7 +74,7 @@ export async function mount(ui) {
       case 'learned-memory': await memories(); break;
       case 'cameras': cameras(snapshot); break;
       case 'voice': await voice(snapshot); break;
-      case 'even-realities': glasses(snapshot); break;
+      case 'even-realities': await glasses(snapshot); break;
       case 'home-assistant': home(snapshot); break;
       case 'speech': speech(snapshot); break;
       case 'proactivity': proactive(snapshot); break;
@@ -229,7 +229,24 @@ export async function mount(ui) {
   function proactive(snapshot) {
     content.append(card('Current activity','Carvis uses your selected Home Assistant events and interruption preferences.',row('Home Assistant',words(snapshot.status?.ha?.status || 'not connected')),details('Activity session',snapshot.session),details('Recent decisions',snapshot.classifier)),card('Recent home events','Read-only event history.',records(list(snapshot.events),event=>row(words(event.type),time(event.ts || event.at),details('Event details',event)))));
   }
-  function glasses(snapshot) {
+  async function glasses(snapshot) {
+    const config = snapshot.config?.voice || {};
+    const voiceEnabled = ui.integrations.some(item => item.id === 'voice' && item.enabled);
+    const selected = config.inputDevice === 'even-glasses';
+    const status = !voiceEnabled ? 'Enable Voice input & chat to use the glasses microphone.'
+      : !selected ? 'Another microphone is selected. Glasses audio will be ignored until you switch.'
+      : config.inputMuted ? 'Even glasses are selected. The microphone is muted.'
+      : config.enabled === false || snapshot.config?.stt?.enabled === false ? 'Even glasses are selected, but voice or transcription is switched off in Voice input & chat.'
+      : snapshot.stt?.ready === false ? 'Even glasses are selected. Add your speech provider key in Settings → Global API keys.'
+      : 'Even glasses are selected. Voice input & chat handles speech recognition using your shared settings.';
+    content.append(card('Glasses microphone',status,
+      voiceEnabled && !selected ? action('Use glasses microphone',async()=>{
+        await post('/api/voice/microphone',{inputDevice:'even-glasses'});await reload();
+      }) : null,
+      el('div',{class:'action-row'},
+        el('a',{href:'#integrations/voice',class:'button compact'},'Voice & microphone'),
+        el('a',{href:'#integrations/speech',class:'button quiet compact'},'Spoken replies'),
+        el('a',{href:'#settings',class:'button quiet compact'},'Global API keys'))));
     content.append(card('Glasses display','Review the current widgets and clear them when you need a blank screen.',records(list(snapshot.hud?.slots).map((widget,index)=>widget?{...widget,slot:index+1}:null).filter(Boolean), (widget,index)=>row(`Widget ${widget.slot || index+1}`,widget.title || widget.text || words(widget.type),details('Widget details',widget))),action('Clear glasses screen',async()=>{await post('/api/hud/clear',{});await reload();})),card('Create or change a widget','Tell Carvis what you want to see or control.',askForm('Widget request','Show a light toggle and a brightness slider on my glasses.')),card('Connection status','Phone audio and display contact.',details('Glasses contact',snapshot.glassesDisplay),details('Phone speaker',snapshot.phoneSpeaker)));
   }
   function physical(snapshot) {

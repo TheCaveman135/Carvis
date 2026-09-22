@@ -1,6 +1,6 @@
 # Carvis for Even Realities G2
 
-The default build contains the full Carvis glasses and phone interface. Configure **Assistant engine**, **Even Realities**, **Voice conversation** (for microphone input), and **Speech output** (for spoken replies) in your Carvis installation. The companion starts with blank connection settings and the microphone muted.
+The default build contains the full Carvis glasses and phone interface. Configure **Advanced assistant**, **Even Realities**, **Voice input & chat** (for microphone input), and **Spoken replies** (for spoken replies) in your Carvis installation. Choose **Even glasses** as the microphone in Voice input & chat. Both companion builds use its speech model and the keys saved in **Settings → Global API keys**. The companion starts with blank connection settings and the microphone muted.
 
 ```sh
 npm ci

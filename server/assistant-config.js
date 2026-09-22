@@ -90,7 +90,7 @@ export function integrationConfigFromLegacy(cfg, environment = {}) {
   const remoteEntity = tv.remoteEntity || selected.find(id => id === 'remote.apple_tv') || '';
   flag('apple-tv', !!(mediaPlayerEntity || remoteEntity));
   entries['apple-tv'].config = { mediaPlayerEntity, remoteEntity, addonSlug: tv.addonSlug || 'local_apple_tv_ai', context: tv.context || '', silentNavigation: tv.silentNavigation !== false, shortReplies: tv.shortReplies !== false };
-  Object.assign(entries['even-realities'].config, { pairingToken: cfg.glasses?.token || '', publicBaseUrl: '', microphoneEnabled: false });
+  Object.assign(entries['even-realities'].config, { pairingToken: cfg.glasses?.token || '', publicBaseUrl: '' });
   return entries;
 }
 export function projectRuntimeConfig(store) {
@@ -132,9 +132,9 @@ export function projectRuntimeConfig(store) {
     }
   }
   const sharedKeys = globalKeys(store.config);
-  cfg.stt.deepgramKey ||= sharedKeys.deepgram || '';
-  cfg.stt.assemblyaiKey ||= sharedKeys.assemblyai || '';
-  cfg.search.geminiKey ||= sharedKeys.gemini || '';
+  cfg.stt.deepgramKey = config('voice').stt__deepgramKey || sharedKeys.deepgram || cfg.stt.deepgramKey || '';
+  cfg.stt.assemblyaiKey = config('voice').stt__assemblyaiKey || sharedKeys.assemblyai || cfg.stt.assemblyaiKey || '';
+  cfg.search.geminiKey = config('web-search').search__geminiKey || sharedKeys.gemini || cfg.search.geminiKey || '';
   cfg.server = { host: '127.0.0.1', port: 0 };
   return cfg;
 }

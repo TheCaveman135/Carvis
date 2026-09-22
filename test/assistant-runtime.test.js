@@ -292,3 +292,22 @@ test('owner microphone controls persist without restarting the worker and reject
  assert.equal(app.runtime.child,child);assert.equal(app.store.config.integrations.voice.config.voice__inputMuted,true);
  assert.equal((await app.request(route,{owner:true,method:'POST',data:{muted:false}})).status,400);
 });
+
+test('full glasses pipeline inherits global speech keys and microphone selection without device settings access',async t=>{
+ const app=await application(t,{engine:true,devices:true});
+ app.store.config.apiKeys={deepgram:'fixture-global-speech-one'};
+ await app.registry.configure('voice',{enabled:true,config:{voice__enabled:true,stt__enabled:true,stt__engine:'deepgram',voice__inputMuted:true,voice__inputDevice:'even-glasses'}});
+ let cfg=await app.runtime.call('config');
+ assert.equal(cfg.stt.deepgramKey,'fixture-global-speech-one');
+ assert.equal(cfg.voice.inputDevice,'even-glasses');
+ const response=await app.request('/api/voice/audio',{method:'POST',token:'fixture-private-glasses-token',data:{}});
+ assert.equal(response.status,200);assert.equal((await response.json()).reason,'microphone muted');
+ const rotated=await app.request('/api/settings',{owner:true,method:'POST',data:{apiKeys:{deepgram:'fixture-global-speech-two'}}});
+ assert.equal(rotated.status,200);
+ cfg=await app.runtime.call('config');assert.equal(cfg.stt.deepgramKey,'fixture-global-speech-two');
+ assert.equal(Boolean(app.store.config.integrations.voice.config.stt__deepgramKey),false);
+ const state=await (await app.request('/api/state',{owner:true})).text();
+ assert(!state.includes('fixture-global-speech-two'));
+ const item=JSON.parse(state).integrations.find(i=>i.id==='even-realities');
+ assert(!item.fields.some(f=>f.key==='speechApiKey'));
+});

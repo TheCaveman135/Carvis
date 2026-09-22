@@ -20,8 +20,7 @@ export function modelRouterEntries(integrations) {
       fields: (integration.fields || []).filter(
         (f) =>
           f.type !== "password" &&
-          (f.key === "speechModel" ||
-            f.key === "model" ||
+          (f.key === "model" ||
             f.key.endsWith("__model")),
       ),
       note: shared[integration.id] || "",

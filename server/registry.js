@@ -84,11 +84,15 @@ export class Registry {
   safeConfig(id) {
     const entry = this.store.config.integrations[id] || {},
       cfg = { ...entry.config };
-    for (const f of this.modules.get(id).fields || [])
-      if (f.type === "password") {
-        cfg[`has${f.key[0].toUpperCase() + f.key.slice(1)}`] = !!cfg[f.key];
-        delete cfg[f.key];
-      }
+    const module = this.modules.get(id);
+    const privateKeys = new Set([
+      ...(module.privateConfigKeys || []),
+      ...(module.fields || []).filter(f => f.type === "password").map(f => f.key),
+    ]);
+    for (const key of privateKeys) {
+      cfg[`has${key[0].toUpperCase() + key.slice(1)}`] = !!cfg[key];
+      delete cfg[key];
+    }
     return cfg;
   }
   list() {

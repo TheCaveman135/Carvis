@@ -5,8 +5,8 @@ The optional Even Realities integration connects G2 glasses to your own Carvis i
 ## Connect the full companion
 
 1. Give your Carvis installation an HTTPS address reachable from your phone.
-2. Enable and configure **Assistant engine** and **Even Realities** in Carvis's Integrations. Enter your server address in Even Realities and generate a **Device pairing token**.
-3. For microphone input, also configure and enable **Voice conversation**. Its speech recognition settings support the providers offered by that integration, including Deepgram. For spoken replies, configure and enable **Speech output**, then choose your output on the companion's phone screen. Home speaker playback also needs Home Assistant and a selected speaker.
+2. Enable and configure **Advanced assistant** and **Even Realities** in Carvis's Integrations. Enter your server address in Even Realities and generate a **Device pairing token**.
+3. For microphone input, also configure and enable **Voice input & chat**. Select **Even glasses** as its microphone. It uses your speech provider, model, and **Settings → Global API keys**; the glasses integration never needs a second provider key. Its page shows when another microphone is selected and links to these shared settings. For spoken replies, configure and enable **Spoken replies**, then choose your output on the companion's phone screen. Home speaker playback also needs Home Assistant and a selected speaker.
 4. Build the companion for your server origin. Even Hub requires that origin in the package network whitelist:
 
    ```sh
@@ -58,7 +58,7 @@ cd integrations/even-realities
 CARVIS_PUBLIC_URL=https://your-carvis.example npm run pack:basic
 ```
 
-Upload `carvis-basic.ehpk`; its app identifier is separate from the full companion. It supports typed chat, optional OpenAI-compatible transcription configured directly in Even Realities, basic interactive widgets, bottom reply captions, and a mute indicator. It does not include phone speech playback, camera images, or the full assistant's voice pipeline. Basic microphone capture starts off each launch.
+Upload `carvis-basic.ehpk`; its app identifier is separate from the full companion. It supports typed chat, optional transcription using the shared Voice input & chat provider and global API key, basic interactive widgets, bottom reply captions, and a mute indicator. It does not include phone speech playback, camera images, or the full assistant's voice pipeline. Basic microphone capture starts off each launch.
 
 The following payload applies to the Basic companion's `even_realities_set_widget` tool, not to the full assistant's HUD tools.
 

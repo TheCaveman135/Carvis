@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { validate } from "../validation.js";
+import { projectRuntimeConfig } from "../assistant-config.js";
+import { Transcriber } from "../../integrations/assistant-runtime/server/stt.js";
 
 const stateKey = "hud";
 const emptyState = () => ({
@@ -234,12 +236,21 @@ async function caption(ctx, text) {
   state.replyExpires = Date.now() + 30000;
   return write(ctx, state);
 }
-function publicState(state, config) {
+function voiceConfig(ctx) {
+  if (!ctx.registry.store || !ctx.registry.available?.("voice")) return null;
+  return projectRuntimeConfig(ctx.registry.store);
+}
+function voiceAvailable(ctx) {
+  const cfg = voiceConfig(ctx);
+  const key = cfg?.stt?.engine === "assemblyai" ? cfg.stt.assemblyaiKey : cfg?.stt?.deepgramKey;
+  return Boolean(cfg?.voice?.enabled && cfg.stt?.enabled && key && !cfg.voice.inputMuted && (!cfg.voice.inputDevice || cfg.voice.inputDevice === "even-glasses"));
+}
+function publicState(state, ctx) {
   return {
     revision: state.revision,
     reply: state.replyExpires > Date.now() ? state.reply : "",
     replyExpires: state.replyExpires,
-    voiceEnabled: config.microphoneEnabled === true,
+    voiceEnabled: voiceAvailable(ctx),
     slots: state.slots.map((widget) => {
       if (!widget) return null;
       const { kind, min, max, step, value, unit, options, index } =
@@ -294,38 +305,14 @@ export function pcmToWav(base64) {
   return Buffer.concat([header, pcm]);
 }
 async function transcribe(ctx, body) {
-  assert(
-    ctx.config.microphoneEnabled === true,
-    "Enable microphone transcription in the Even Realities integration first.",
-  );
-  assert(
-    ctx.config.speechBaseUrl &&
-      ctx.config.speechModel &&
-      ctx.config.speechApiKey,
-    "Configure a speech provider before using the microphone.",
-  );
-  const file = pcmToWav(body.pcmBase64);
-  const form = new FormData();
-  form.append("file", new Blob([file], { type: "audio/wav" }), "utterance.wav");
-  form.append("model", ctx.config.speechModel);
-  if (ctx.config.speechLanguage)
-    form.append("language", ctx.config.speechLanguage);
-  const response = await ctx.fetch(
-    `${ctx.config.speechBaseUrl.replace(/\/$/, "")}/audio/transcriptions`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${ctx.config.speechApiKey}` },
-      body: form,
-      signal: ctx.signal
-        ? AbortSignal.any([ctx.signal, AbortSignal.timeout(45000)])
-        : AbortSignal.timeout(45000),
-    },
-  );
-  assert(
-    response.ok,
-    `Speech provider rejected transcription (${response.status}).`,
-  );
-  const result = await response.json();
+  assert(voiceAvailable(ctx), "Enable Voice input & chat, set its global speech key, select Even glasses as the microphone, and unmute it.");
+  ctx.signal?.throwIfAborted();
+  const pcm = pcmToWav(body.pcmBase64).subarray(44);
+  const transcriber = new Transcriber(() => voiceConfig(ctx), { fetch: ctx.fetch, signal: ctx.signal });
+  const result = await transcriber.transcribe(pcm);
+  // A settings change while transcription is pending revokes microphone access.
+  assert(voiceAvailable(ctx), "Glasses microphone was muted, changed, or disabled during transcription.");
+  ctx.signal?.throwIfAborted();
   const text = trim(result.text, 12000);
   assert(text, "No speech was recognized. Try again or type on your phone.");
   return text;
@@ -348,7 +335,7 @@ async function chat(ctx, body, text) {
     ...result,
     confirmations,
     transcript: text.trim(),
-    hud: publicState(await read(ctx), ctx.config),
+    hud: publicState(await read(ctx), ctx),
   };
 }
 async function performAction(ctx, body) {
@@ -428,7 +415,7 @@ async function performAction(ctx, body) {
         liveReads.delete(widget.id);
       }
     }
-    return { ...result, hud: publicState(await read(ctx), ctx.config) };
+    return { ...result, hud: publicState(await read(ctx), ctx) };
   } finally {
     actionBusy = false;
   }
@@ -471,6 +458,7 @@ const actionSchema = {
 export default {
   id: "even-realities",
   name: "Even Realities",
+  privateConfigKeys: ["speechApiKey"],
   version: "1.0.0",
   icon: "glasses",
   description:
@@ -496,33 +484,6 @@ export default {
       description:
         "Generate a random token, then enter it in the companion app. It grants device access, not settings access.",
     },
-    {
-      key: "microphoneEnabled",
-      label: "Enable voice transcription",
-      type: "boolean",
-      description:
-        "Optional. Audio is sent to your selected speech provider only while the microphone is on.",
-    },
-    {
-      key: "speechBaseUrl",
-      label: "Speech provider API URL",
-      type: "url",
-      description:
-        "OpenAI-compatible API base URL, ending in /v1 when required.",
-    },
-    { key: "speechApiKey", label: "Speech provider API key", type: "password" },
-    {
-      key: "speechModel",
-      label: "Speech model",
-      type: "text",
-      description: "Use a transcription model supported by your provider.",
-    },
-    {
-      key: "speechLanguage",
-      label: "Speech language",
-      type: "text",
-      description: "Optional ISO language code, such as en.",
-    },
   ],
   validateConfig(config) {
     const url = new URL(config.publicBaseUrl);
@@ -541,23 +502,6 @@ export default {
         config.pairingToken.length >= 32,
       "Generate a pairing token of at least 32 characters.",
     );
-    if (config.microphoneEnabled) {
-      assert(
-        config.speechBaseUrl && config.speechApiKey && config.speechModel,
-        "Voice needs a speech API URL, key, and model.",
-      );
-      const speech = new URL(config.speechBaseUrl);
-      assert(
-        speech.protocol === "https:" ||
-          (speech.protocol === "http:" &&
-            ["localhost", "127.0.0.1", "[::1]"].includes(speech.hostname)),
-        "Use HTTPS for a remote speech provider.",
-      );
-      assert(
-        !speech.username && !speech.password && !speech.search && !speech.hash,
-        "Speech API URL must not contain credentials or query parameters.",
-      );
-    }
     return config;
   },
   async test(ctx) {
@@ -565,7 +509,7 @@ export default {
       success: true,
       message:
         "Device endpoint is ready. Connect the companion app with your Carvis URL and pairing token.",
-      microphoneEnabled: ctx.config.microphoneEnabled === true,
+      microphoneEnabled: voiceAvailable(ctx),
     };
   },
   tools(ctx) {
@@ -686,7 +630,7 @@ export default {
   },
   async route({ method, path, body = {} }, ctx) {
     if (method === "GET" && path === "/feed")
-      return publicState(await refresh(ctx), ctx.config);
+      return publicState(await refresh(ctx), ctx);
     if (method === "POST" && path === "/chat")
       return chat(ctx, body, body.text);
     if (method === "POST" && path === "/audio")
@@ -726,12 +670,12 @@ export default {
           liveReads.delete(current.id);
         }
       }
-      return { ...result, hud: publicState(await read(ctx), ctx.config) };
+      return { ...result, hud: publicState(await read(ctx), ctx) };
     }
     if (method === "POST" && path === "/clear") {
       const state = emptyState();
       state.revision = (await read(ctx)).revision;
-      return publicState(await write(ctx, state), ctx.config);
+      return publicState(await write(ctx, state), ctx);
     }
     return null;
   },

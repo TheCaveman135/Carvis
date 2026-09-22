@@ -49,3 +49,13 @@ test('voice defaults to the same Deepgram provider the runtime and UI use',async
  assert.equal(voice.validateConfig({stt__engine:'assemblyai'}).stt__engine,'assemblyai');
  assert.throws(()=>voice.validateConfig({stt__engine:'invalid'}),/Choose a valid/);
 });
+
+test('glasses use shared voice settings and retired credentials never reach the UI',async t=>{
+ const registry=await fixture(t);
+ registry.store.config.integrations['even-realities']={enabled:false,config:{speechApiKey:'legacy-private-secret'}};
+ const item=registry.list().find(i=>i.id==='even-realities');
+ assert.deepEqual(item.controls.dependsOn,['assistant-engine']);
+ assert(!item.fields.some(f=>f.key.startsWith('speech')||f.key==='microphoneEnabled'));
+ assert(!JSON.stringify(item).includes('legacy-private-secret'));
+ assert.equal(item.config.hasSpeechApiKey,true);
+});

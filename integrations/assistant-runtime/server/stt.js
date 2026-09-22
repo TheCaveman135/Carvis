@@ -23,7 +23,9 @@ const DEEPGRAM_URL = 'https://api.deepgram.com/v1/listen';
 const ASSEMBLYAI_URL = 'https://sync.assemblyai.com/transcribe';
 
 export class Transcriber {
-  constructor(getConfig) {
+  constructor(getConfig, { fetch: fetcher = fetch, signal } = {}) {
+    this.fetch = fetcher;
+    this.signal = signal;
     this.getConfig = getConfig;
     this.lastMs = 0;
     this.lastConfidence = null;
@@ -65,7 +67,7 @@ export class Transcriber {
     if (!key) {
       const label = engine === 'assemblyai' ? 'AssemblyAI' : 'Deepgram';
       this.error = `no ${label} API key set`;
-      throw new Error(`no ${label} API key set — add one in the Voice & glasses card`);
+      throw new Error(`no ${label} API key set — add one in Settings → Global API keys`);
     }
 
     const started = Date.now();
@@ -85,11 +87,11 @@ export class Transcriber {
 
     let res;
     try {
-      res = await fetch(url, {
+      res = await this.fetch(url, {
         method: 'POST',
         headers: { Authorization: `Token ${key}`, 'Content-Type': 'audio/wav' },
         body: wavFromPcm(pcm),
-        signal: AbortSignal.timeout(20000),
+        signal: this.signal ? AbortSignal.any([this.signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000),
       });
     } catch (err) {
       this.error = `could not reach Deepgram (${err.message})`;
@@ -124,11 +126,11 @@ export class Transcriber {
 
     let res;
     try {
-      res = await fetch(ASSEMBLYAI_URL, {
+      res = await this.fetch(ASSEMBLYAI_URL, {
         method: 'POST',
         headers: { Authorization: key, 'X-AAI-Model': model },
         body: form,
-        signal: AbortSignal.timeout(20000),
+        signal: this.signal ? AbortSignal.any([this.signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000),
       });
     } catch (err) {
       this.error = `could not reach AssemblyAI (${err.message})`;
