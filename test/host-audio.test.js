@@ -42,7 +42,7 @@ test('capture reports listening only when PCM arrives and exposes a level withou
  mic.stop();assert.equal(mic.state().level,0);
 });
 test('a stalled microphone is reopened and mute cancels its pending reconnect',async t=>{
- const {mic,children,setClock}=microphoneFixture(t);await mic.start('test');setClock(12000);mic.checkHealth();
+ const {mic,children,setClock}=microphoneFixture(t);await mic.start('test');setClock(32000);mic.checkHealth();
  assert(children[0].killed);assert.equal(mic.state().listening,false);assert.equal(mic.state().reconnecting,true);assert.match(mic.state().error,/not sending audio/);
  mic.stop();assert.equal(mic.desired,'');assert.equal(mic.state().reconnecting,false);
 });
@@ -51,4 +51,11 @@ test('changing microphones invalidates already queued transcription work',async 
  mic.onAudio=async (_audio,guard)=>{current=guard.isCurrent;};await mic.start('test');
  children[0].stdout.emit('data',Buffer.concat([...Array(30)].map(()=>frame(1500)).concat([...Array(40)].map(()=>frame()))));
  await new Promise(resolve=>setImmediate(resolve));assert(current());mic.stop();assert.equal(current(),false);
+});
+
+test('quiet speech reaches transcription while low background noise is ignored',()=>{
+ const vad=new PcmSentences();for(let i=0;i<100;i++)assert.equal(vad.push(frame(60)),null);
+ for(let i=0;i<30;i++)assert.equal(vad.push(frame(220)),null);
+ let result;for(let i=0;i<40;i++)result=vad.push(frame(60)) || result;
+ assert(result?.length>16000);
 });

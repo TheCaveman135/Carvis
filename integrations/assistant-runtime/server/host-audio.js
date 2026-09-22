@@ -28,7 +28,7 @@ export class PcmSentences {
  reset(){this.chunks=[];this.pre=[];this.preBytes=0;this.bytes=0;this.quiet=0;this.voiced=0;this.speaking=false;}
  push(chunk){
   let sum=0;for(let i=0;i+1<chunk.length;i+=2){const sample=chunk.readInt16LE(i);sum+=sample*sample;}
-  const loud=Math.sqrt(sum/(chunk.length/2 || 1))>450,ms=chunk.length/32;
+  const loud=Math.sqrt(sum/(chunk.length/2 || 1))>160,ms=chunk.length/32;
   if(!this.speaking){this.pre.push(chunk);this.preBytes+=chunk.length;while(this.preBytes>9600&&this.pre.length>1)this.preBytes-=this.pre.shift().length;if(!loud)return null;this.speaking=true;this.chunks=this.pre;this.bytes=this.preBytes;this.pre=[];this.preBytes=0;this.voiced=ms;return null;}
   this.chunks.push(chunk);this.bytes+=chunk.length;this.quiet=loud?0:this.quiet+ms;if(loud)this.voiced+=ms;
   if(this.quiet<800&&this.bytes<928000)return null;
@@ -39,7 +39,7 @@ export class HostMicrophone {
  constructor({onAudio,list=listHostAudio,helper=audioHelper,spawnImpl=spawn,now=Date.now}){
   Object.assign(this,{onAudio,list,helper,spawn:spawnImpl,now});
   this.process=null;this.error='';this.generation=0;this.busy=false;this.speakingOutput=false;
-  this.detector=new PcmSentences();this.active='';this.desired='';this.lastAudioAt=0;this.level=0;this.bytes=0;this.retries=0;
+  this.detector=new PcmSentences();this.active='';this.desired='';this.lastAudioAt=0;this.level=0;this.peakRms=0;this.bytes=0;this.retries=0;
  }
  async start(uid,{retry=false}={}){
   this.stop();const generation=this.generation;this.desired=uid;this.error='';this.startedAt=this.now();
@@ -57,7 +57,7 @@ export class HostMicrophone {
     while(remainder.length>=640){
      const frame=remainder.subarray(0,640);remainder=remainder.subarray(640);
      let sum=0;for(let i=0;i<frame.length;i+=2)sum+=frame.readInt16LE(i)**2;
-     this.level=Math.min(100,Math.round(Math.sqrt(sum/320)/32768*500));
+     const rms=Math.sqrt(sum/320);this.peakRms=Math.max(this.peakRms,rms);this.level=Math.min(100,Math.round(rms/32768*500));
      if(this.busy||this.speakingOutput){this.detector.reset();continue;}
      const audio=this.detector.push(frame);
      if(audio){
@@ -74,7 +74,7 @@ export class HostMicrophone {
   }catch(error){if(generation===this.generation)this.retry(error.message);}
  }
  checkHealth(){
-  if(this.process&&this.now()-(this.lastAudioAt||this.startedAt)>10000)this.retry('The selected microphone is not sending audio. Check its connection or choose another microphone.');
+  if(this.process&&this.now()-(this.lastAudioAt||this.startedAt)>(this.lastAudioAt?10000:30000))this.retry('The selected microphone is not sending audio. Check its connection or choose another microphone.');
  }
  retry(message){
   const uid=this.desired;if(!uid)return;
@@ -84,9 +84,9 @@ export class HostMicrophone {
  }
  stop(){
   this.generation++;clearInterval(this.watchdog);clearTimeout(this.retryTimer);this.retryAt=0;this.desired='';
-  this.process?.kill('SIGTERM');this.process=null;this.active='';this.busy=false;this.lastAudioAt=0;this.bytes=0;this.level=0;this.error='';this.detector.reset();
+  this.process?.kill('SIGTERM');this.process=null;this.active='';this.busy=false;this.lastAudioAt=0;this.bytes=0;this.level=0;this.peakRms=0;this.error='';this.detector.reset();
  }
- state(){return {listening:Boolean(this.process&&this.lastAudioAt&&this.now()-this.lastAudioAt<3000),capturing:Boolean(this.process),device:this.active||this.desired,error:this.error,level:this.now()-this.lastAudioAt<1000?this.level:0,lastAudioAt:this.lastAudioAt,bytesReceived:this.bytes,processing:this.busy,speaking:this.speakingOutput,reconnecting:Boolean(this.retryAt),retryAt:this.retryAt};}
+ state(){return {listening:Boolean(this.process&&this.lastAudioAt&&this.now()-this.lastAudioAt<3000),capturing:Boolean(this.process),device:this.active||this.desired,error:this.error,level:this.now()-this.lastAudioAt<1000?this.level:0,lastAudioAt:this.lastAudioAt,bytesReceived:this.bytes,peakRms:Math.round(this.peakRms),hearingSpeech:this.detector.speaking,processing:this.busy,speaking:this.speakingOutput,reconnecting:Boolean(this.retryAt),retryAt:this.retryAt};}
 }
 export async function speakLocal(text,uid,{onStart=()=>{},onEnd=()=>{}}={}){
  const device=(await listHostAudio()).find(d=>d.uid===uid&&d.output);if(!device)return {success:false,error:'Selected local speaker is unavailable'};

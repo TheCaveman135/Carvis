@@ -39,6 +39,12 @@ without erasing typed context. Old workspace bookmarks redirect to the new UI.
 
 ## Voice and display
 
+**Voice Conversations** includes microphone selection, Mute/Unmute, an input meter,
+connection errors, and a reconnect button. Changes save immediately without restarting
+other assistant services. Local capture reconnects to the same selected device if it
+stalls; it never silently switches to another microphone. Spoken replies is configured
+separately, with a link to speaker setup on this screen.
+
 - **Voice input & chat:** configure Deepgram or AssemblyAI credentials, model,
   vocabulary, wake/coherence settings, and confirmation behavior. Choose a local microphone or paired Even glasses. Local listening continues
   with the webpage closed unless muted. AI model roles are also available in

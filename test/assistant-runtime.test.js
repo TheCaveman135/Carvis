@@ -279,3 +279,16 @@ test('advanced engine receives trusted confirmation evidence through the real mo
   assert.match(prompt,/Server execution records/);assert.match(prompt,/fixture-evidence/);assert.match(prompt,/"decision":"declined"/);assert(!prompt.includes('forged-evidence'));
   assert(!String(await app.runtime.call('context')).includes('fixture-evidence'));
 });
+
+
+test('owner microphone controls persist without restarting the worker and reject device access',async t=>{
+ const app=await application(t,{engine:true,devices:true});
+ await app.registry.configure('voice',{enabled:true,config:{voice__enabled:true,stt__enabled:true,voice__inputMuted:true}});
+ const child=app.runtime.child;
+ const route='/integrations/assistant-engine/api/voice/microphone';
+ assert.equal((await app.request(route,{method:'POST',token:'fixture-private-physical-token',data:{muted:true}})).status,401);
+ const response=await app.request(route,{owner:true,method:'POST',data:{muted:true}});
+ assert.equal(response.status,200);assert.equal((await response.json()).muted,true);
+ assert.equal(app.runtime.child,child);assert.equal(app.store.config.integrations.voice.config.voice__inputMuted,true);
+ assert.equal((await app.request(route,{owner:true,method:'POST',data:{muted:false}})).status,400);
+});
