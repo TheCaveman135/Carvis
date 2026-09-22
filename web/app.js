@@ -1763,10 +1763,13 @@ function makeEntitySelector(config, allowedTypes = () => config.agent__allowedDo
   const only = input('entities-selected','','checkbox');
   const showOther=input('entities-other-types','','checkbox');
   const canControl=id=>allowedTypes().includes(id.split('.')[0]);
+  // Cameras are observation sources, not controllable device types. Keep them
+  // discoverable, along with entities whose existing access can be revoked.
+  const shownByDefault=id=>canControl(id)||id.startsWith('camera.')||observed.has(id)||controlled.has(id);
   let entities = [], loaded = false, room = '*';
   const label = value => String(value || '').replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase());
   const domainIcon = domain => ({media_player:'tv',camera:'glasses',lock:'lock',switch:'plug',light:'spark',sensor:'info',binary_sensor:'info'}[domain] || 'grid');
-  const visible = () => entities.filter(e => (showOther.checked || canControl(e.entity_id)) && (room==='*' || (e.area_id || '')===room) && (!type.value || e.domain===type.value) && (!only.checked || observed.has(e.entity_id)) && `${e.name} ${e.entity_id} ${e.area_name || ''}`.toLowerCase().includes(search.value.toLowerCase()));
+  const visible = () => entities.filter(e => (showOther.checked || shownByDefault(e.entity_id)) && (room==='*' || (e.area_id || '')===room) && (!type.value || e.domain===type.value) && (!only.checked || observed.has(e.entity_id)) && `${e.name} ${e.entity_id} ${e.area_name || ''}`.toLowerCase().includes(search.value.toLowerCase()));
   function setPermission(id, action) {
     if(action==='observe') observed.add(id);
     if(action==='control' && canControl(id)){observed.add(id);controlled.add(id);}
@@ -1779,7 +1782,7 @@ function makeEntitySelector(config, allowedTypes = () => config.agent__allowedDo
   bulk.addEventListener('change',()=>{if(!bulk.value)return;for(const e of visible())if(selected.has(e.entity_id))setPermission(e.entity_id,bulk.value);bulk.value='';render();});
   const selectAll=button('Select all shown',()=>{const rows=visible(),all=rows.length && rows.every(e=>selected.has(e.entity_id));for(const e of rows)all?selected.delete(e.entity_id):selected.add(e.entity_id);render();},'compact');
   function render(){
-    const typeValue=type.value;const types=[...new Set(entities.filter(e=>showOther.checked || canControl(e.entity_id)).map(e=>e.domain))].sort();
+    const typeValue=type.value;const types=[...new Set(entities.filter(e=>showOther.checked || shownByDefault(e.entity_id)).map(e=>e.domain))].sort();
     type.replaceChildren(el('option',{value:''},'All shown types'),...types.map(value=>el('option',{value},label(value))));type.value=types.includes(typeValue)?typeValue:'';
     const matches=visible();
     count.textContent=`${matches.length} entities · ${observed.size} observed · ${[...controlled].filter(canControl).length} interactive · ${matches.filter(e=>selected.has(e.entity_id)).length} marked for bulk edits`;
@@ -1801,7 +1804,7 @@ function makeEntitySelector(config, allowedTypes = () => config.agent__allowedDo
       const control=input(`control-${id}`,'','checkbox',{checked:controlled.has(id),'aria-label':`Let Carvis control ${name}`,disabled:!canControl(id),title:canControl(id)?'':'This device type is not allowed for control'});control.addEventListener('change',()=>{setPermission(id,control.checked?'control':'stop-control');render();});
       const guard=el('select',{'aria-label':`Confirmation for ${name}`,disabled:!controlled.has(id)||!canControl(id)},...[['',e.defaultGuard==='critical'?'Auto – Critical':e.defaultGuard==='standard'?'Auto – Standard':'Auto – Unavailable'],['standard','Standard'],['protected','Require confirmation']].map(([value,text])=>el('option',{value,selected:(guards[id] || '')===value},text)));
       guard.addEventListener('change',()=>{if(guard.value)guards[id]=guard.value;else delete guards[id];});
-      body.append(el('tr',{'data-selected':selected.has(id)?'true':'false'},el('td',{},mark),el('td',{},el('div',{class:'entity-name-cell'},icon(domainIcon(e.domain)),el('div',{},el('strong',{},name),el('small',{},id)))),el('td',{},label(e.domain)),el('td',{},el('span',{class:`entity-state ${e.state==='on'?'is-on':''}`},e.state==null?'Unavailable':`${label(e.state)}${e.unit?' '+e.unit:''}`)),el('td',{},see),el('td',{},control,!canControl(id)?el('small',{class:'muted'},'Type blocked'):null),el('td',{},guard)));
+      body.append(el('tr',{'data-selected':selected.has(id)?'true':'false'},el('td',{},mark),el('td',{},el('div',{class:'entity-name-cell'},icon(domainIcon(e.domain)),el('div',{},el('strong',{},name),el('small',{},id)))),el('td',{},label(e.domain)),el('td',{},el('span',{class:`entity-state ${e.state==='on'?'is-on':''}`},e.state==null?'Unavailable':`${label(e.state)}${e.unit?' '+e.unit:''}`)),el('td',{},see),el('td',{},control,!canControl(id)?el('small',{class:'muted'},e.domain==='camera'?'Observe only':'Type blocked'):null),el('td',{},guard)));
     }
     list.append(table);
   }
