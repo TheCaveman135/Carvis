@@ -91,7 +91,7 @@ export async function mount(ui) {
   async function tv() {
     let run, polling=false;
     try{run=await get('/api/tv/status');}catch(error){content.append(card('TV controller',error.message));return;}
-    let previewUrl='',previewBusy=false;
+    let previewBusy=false;
     const image=el('img',{class:'tv-frame',alt:'Current TV screen',hidden:true});
     const previewStatus=el('p',{class:'small muted',role:'status'},'Loading screen…');
     const previewSettings=el('a',{href:'#settings/home-assistant',class:'button quiet compact',hidden:true},'Camera access settings');
@@ -107,8 +107,15 @@ export async function mount(ui) {
         }
         if(!response.headers.get('content-type')?.startsWith('image/'))throw Error('The camera returned an invalid screen image.');
         const blob=await response.blob();if(signal.aborted)return;
-        if(previewUrl)URL.revokeObjectURL(previewUrl);
-        previewUrl=URL.createObjectURL(blob);image.src=previewUrl;await image.decode();
+        // Carvis permits same-origin and data images, not blob URLs.
+        const source=await new Promise((resolve,reject)=>{
+          const reader=new FileReader();
+          reader.onload=()=>resolve(reader.result);
+          reader.onerror=()=>reject(Error('Could not read the screen image.'));
+          reader.readAsDataURL(blob);
+        });
+        if(signal.aborted)return;
+        image.src=source;await image.decode();
         if(signal.aborted)return;
         image.hidden=false;refresh.textContent='Refresh screen';
         previewStatus.textContent=`Snapshot · ${new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'})}`;
@@ -139,7 +146,7 @@ export async function mount(ui) {
     content.append(el('div',{class:'control-two-column'},card('TV screen','A snapshot from your selected screen camera.',image,previewStatus,el('div',{class:'action-row'},refresh,previewSettings)),card('Current task','Progress refreshes automatically without clearing what you are typing.',taskGoal,taskStatus,taskMessage,stop,start,guidance,el('details',{class:'control-details'},el('summary',{},'Task progress'),progress))));
     content.append(card('Remote','Every button goes through TV AI Controller in Home Assistant.',el('div',{class:'tv-remote'},remoteButtons),el('div',{class:'action-row'},playback),el('p',{class:'small muted'},'Change navigation silence and playback replies in Settings → Reply behavior.')));
     void loadPreview();
-    const timer=setInterval(poll,3000);dispose=()=>{clearInterval(timer);if(previewUrl)URL.revokeObjectURL(previewUrl);};
+    const timer=setInterval(poll,3000);dispose=()=>{clearInterval(timer);image.removeAttribute('src');};
   }
   async function protocols(snapshot) {
     const state=snapshot.automations || await get('/api/automations');
