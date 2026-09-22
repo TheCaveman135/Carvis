@@ -55,6 +55,43 @@ test('Carvis tool reads cannot reveal unselected Home Assistant entities', () =>
   assert.deepEqual(find.execute({ domain: 'lock' }).entities, []);
 });
 
+test('malformed entity selection cannot authorize reads through a string substring match', () => {
+  const tools = buildTools({
+    ha: {
+      states: new Map([['light.selected', { state: 'on', attributes: {}, last_changed: new Date().toISOString() }]]),
+      friendlyName: () => 'Selected light',
+      areaNameFor: () => 'Test',
+    },
+    getConfig: () => ({ entities: { observed: 'light.selected', controlled: 'light.selected' } }),
+  });
+  assert.deepEqual(tools.find((tool) => tool.name === 'ha.get_state').execute({ entity_id: 'light.selected' }), {
+    success: false, error: 'that entity is not available to Carvis',
+  });
+});
+
+test('automation listings share one permission snapshot and honor revocation on the next call', () => {
+  let reads = 0;
+  const config = { entities: { observed: ['light.selected'], controlled: [] } };
+  const selected = {
+    id: 'selected',
+    when: { all: Array.from({ length: 100 }, () => ({ left: { ref: 'ha.light.selected.state' } })) },
+    then: [{ arguments: { entity_id: 'light.selected' } }],
+  };
+  const hidden = { id: 'hidden', then: [{ payload: { media_player: 'media_player.hidden' } }] };
+  const tools = buildTools({
+    getConfig: () => { reads += 1; return config; },
+    automations: { list: () => [selected, hidden] },
+  });
+  const list = tools.find((tool) => tool.name === 'automation.list');
+  reads = 0;
+  assert.deepEqual(list.execute().rules, [selected]);
+  assert.equal(reads, 1, 'permission work is bounded independently of rule/reference count');
+
+  config.entities.observed.length = 0;
+  assert.deepEqual(list.execute().rules, []);
+  assert.equal(reads, 2, 'permission snapshots are never retained between calls');
+});
+
 test('speech is pinned to Carvis’s configured speaker', async () => {
   const states = new Map([
     ['media_player.carvis_speaker', { entity_id: 'media_player.carvis_speaker', state: 'idle', attributes: { friendly_name: 'Carvis Speaker' } }],

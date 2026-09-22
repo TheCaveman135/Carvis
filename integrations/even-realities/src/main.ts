@@ -2,6 +2,7 @@ import './navigation';
 import {WidgetFocus} from './interaction';
 import { installForegroundRecovery } from './foreground-recovery';
 import { hostLifecycleAction } from './lifecycle';
+import { BackgroundState, createRuntimeState } from './background-state';
 /**
  * Carvis on the G2.
  *
@@ -22,10 +23,7 @@ import { waitForEvenAppBridge, OsEventTypeList } from '@evenrealities/even_hub_s
 import { AUDIO, DEFAULTS, DISPLAY, SETTINGS_REVISION, STORAGE_KEYS } from './config';
 import {
   CarvisClient,
-  type Confirmation,
   type DisplayReport,
-  type FeedEntry,
-  type HudState,
   type IngestResult,
 } from './client';
 import { Display } from './display';
@@ -34,186 +32,14 @@ import { Captions } from './captions';
 import { PhoneAudio } from './phone-audio';
 import { UtteranceDetector } from './vad';
 
-const state = {
-  muted: true,
-  seq: 0,
-  entries: [] as FeedEntry[],
-  hud: { revision: 0, slots: [null, null, null, null], overlay: null, free: 4 } as HudState,
-  /** Set while an utterance is in flight, so the status can say so. */
-  busy: false,
-  lastError: '',
-  connected: false,
-  /** Phone panel only: when the feed last answered, and when it next retries. */
-  lastPollAt: 0,
-  nextRetryAt: 0,
-  confirmation: null as Confirmation | null,
-  confirmationBusy: false,
-  indicator: 'muted' as 'muted' | 'unmuted' | 'off',
-};
+const state = createRuntimeState();
+const backgroundState = new BackgroundState(state);
 const captions = new Captions();
 const widgetFocus = new WidgetFocus();
 const bootAt = Date.now();
-type ConnectionSettings = {baseUrl: string; token: string; revision: string; clientId: string};
-let connectionSettings: ConnectionSettings | null = null;
 
-const BACKGROUND_STATE_KEY = 'carvis.public.full.runtimeState.v1';
-// The host snapshot is newer than the storage fallback whenever both arrive.
-// It can be delivered before the bridge (or after the UI) exists, so keep a
-// tiny hand-off rather than letting one path overwrite the other.
-let hostStateRestored = false;
-let onHostStateRestored: (() => void) | null = null;
-
-type BackgroundSnapshot = {
-  muted: boolean;
-  seq: number;
-  entries: FeedEntry[];
-  hud: HudState;
-  lastError: string;
-  confirmation: Confirmation | null;
-  indicator: 'muted' | 'unmuted' | 'off';
-  connection: ConnectionSettings | null;
-};
-
-declare global {
-  interface Window {
-    /** Even Hub reads this before moving the plugin into its headless WebView. */
-    __getStateSnapshot?: () => string;
-    /** Even Hub calls this after loading that WebView or restoring foreground. */
-    __restoreState?: (snapshot: unknown) => void;
-  }
-}
-
-function backgroundSnapshot(): BackgroundSnapshot {
-  return {
-    muted: state.muted,
-    seq: state.seq,
-    entries: state.entries.slice(-DISPLAY.maxLines * 4),
-    hud: state.hud,
-    lastError: state.lastError.slice(0, 300),
-    confirmation: state.confirmation,
-    indicator: state.indicator,
-    connection: connectionSettings,
-  };
-}
-
-/** Restore only data this app itself wrote; connection/bridge state is rebuilt. */
-function restoreBackgroundState(input: unknown): boolean {
-  const parsed = parseBackgroundInput(input);
-  const root = objectRecord(parsed);
-  if (!root) return false;
-  const nested = objectRecord(root[BACKGROUND_STATE_KEY]);
-  const snapshot = nested || root;
-  let restored = false;
-
-  if (typeof snapshot.muted === 'boolean') {
-    state.muted = snapshot.muted;
-    restored = true;
-  }
-  if (Number.isSafeInteger(snapshot.seq) && Number(snapshot.seq) >= 0) {
-    state.seq = Number(snapshot.seq);
-    restored = true;
-  }
-  if (Array.isArray(snapshot.entries)) {
-    state.entries = snapshot.entries.filter(isFeedEntry).slice(-DISPLAY.maxLines * 4);
-    restored = true;
-  }
-  if (isHudState(snapshot.hud)) {
-    state.hud = snapshot.hud;
-    restored = true;
-  }
-  if (typeof snapshot.lastError === 'string') state.lastError = snapshot.lastError.slice(0, 300);
-  if (isConfirmation(snapshot.confirmation) && snapshot.confirmation.expiresAt > Date.now()) {
-    state.confirmation = snapshot.confirmation;
-  } else if (snapshot.confirmation === null || snapshot.confirmation !== undefined) {
-    // A confirmation is intentionally one-shot and short-lived. Never bring
-    // a stale full-screen prompt back from a suspended WebView.
-    state.confirmation = null;
-  }
-  if (['muted', 'unmuted', 'off'].includes(String(snapshot.indicator))) state.indicator = snapshot.indicator as typeof state.indicator;
-  const connection = objectRecord(snapshot.connection);
-  if (connection && typeof connection.baseUrl === 'string' && typeof connection.token === 'string' && connection.revision === SETTINGS_REVISION && typeof connection.clientId === 'string') {
-    connectionSettings = connection as ConnectionSettings;
-  }
-
-  // Never revive an old network request or a half-completed gesture.
-  state.connected = false;
-  state.busy = false;
-  state.confirmationBusy = false;
-  state.lastPollAt = 0;
-  state.nextRetryAt = 0;
-  return restored;
-}
-
-function parseBackgroundInput(input: unknown): unknown {
-  if (typeof input !== 'string') return input;
-  try {
-    return JSON.parse(input);
-  } catch {
-    return null;
-  }
-}
-
-function objectRecord(input: unknown): Record<string, unknown> | null {
-  return input && typeof input === 'object' && !Array.isArray(input)
-    ? (input as Record<string, unknown>)
-    : null;
-}
-
-function isFeedEntry(input: unknown): input is FeedEntry {
-  const entry = objectRecord(input);
-  return Boolean(
-    entry &&
-      typeof entry.id === 'string' &&
-      Number.isFinite(entry.seq) &&
-      Number.isFinite(entry.ts) &&
-      typeof entry.kind === 'string' &&
-      typeof entry.text === 'string' &&
-      typeof entry.detail === 'string',
-  );
-}
-
-function isHudState(input: unknown): input is HudState {
-  const hud = objectRecord(input);
-  return Boolean(
-    hud &&
-      Number.isFinite(hud.revision) &&
-      Array.isArray(hud.slots) &&
-      hud.slots.length === 4 &&
-      Number.isFinite(hud.free),
-  );
-}
-
-function isConfirmation(input: unknown): input is Confirmation {
-  const confirmation = objectRecord(input);
-  return Boolean(
-    confirmation &&
-      typeof confirmation.id === 'string' &&
-      typeof confirmation.prompt === 'string' &&
-      typeof confirmation.detail === 'string' &&
-      Number.isFinite(confirmation.createdAt) &&
-      Number.isFinite(confirmation.expiresAt),
-  );
-}
-
-/**
- * Even Hub's background host looks for these functions directly. The SDK
- * version on current G2 builds does not export helpers for them, so define the
- * documented host contract ourselves at module load — before any lifecycle
- * event can arrive.
- */
-function installBackgroundStateHooks(): void {
-  if (typeof window === 'undefined') return;
-  window.__getStateSnapshot = () => JSON.stringify({ [BACKGROUND_STATE_KEY]: backgroundSnapshot() });
-  window.__restoreState = (snapshot) => {
-    if (restoreBackgroundState(snapshot)) {
-      hostStateRestored = true;
-      console.log('CARVIS_RESUME restored background state');
-      onHostStateRestored?.();
-    }
-  };
-}
-
-installBackgroundStateHooks();
+// Register before awaiting the bridge so early host handoffs are retained.
+backgroundState.installHostHooks();
 
 /**
  * A lifecycle transition intentionally drops work that has not reached the
@@ -285,12 +111,12 @@ async function main(): Promise<void> {
   const created = await display.start();
   if (created !== 0) throw new Error(`Could not create glasses page (${created})`);
   const storedRuntimeState = await runBridge(() => bridge.getLocalStorage(STORAGE_KEYS.runtimeState));
-  if (!hostStateRestored) restoreBackgroundState(storedRuntimeState);
+  backgroundState.restoreFromStorage(storedRuntimeState);
   let baseUrl: string;
   let token: string;
   let displayClientId: string;
-  if (connectionSettings) {
-    ({baseUrl, token, clientId: displayClientId} = connectionSettings);
+  if (backgroundState.connection) {
+    ({baseUrl, token, clientId: displayClientId} = backgroundState.connection);
   } else {
     // One-time migration from older builds. Keep user overrides and mute.
     const storedUrl = await runBridge(() => bridge.getLocalStorage(STORAGE_KEYS.baseUrl));
@@ -302,7 +128,7 @@ async function main(): Promise<void> {
     token = storedRevision === SETTINGS_REVISION && storedToken ? storedToken : DEFAULTS.token;
     if (storedMute === '1' || storedMute === '0') state.muted = storedMute === '1';
     displayClientId = /^[A-Za-z0-9_-]{8,100}$/.test(storedId) ? storedId : newSessionId();
-    connectionSettings = {baseUrl, token, revision: SETTINGS_REVISION, clientId: displayClientId};
+    backgroundState.connection = {baseUrl, token, revision: SETTINGS_REVISION, clientId: displayClientId};
   }
   const displayClientKind = reporterKind();
   const client = new CarvisClient(baseUrl, token);
@@ -340,7 +166,7 @@ async function main(): Promise<void> {
         runtimeSaveForceQueued = false;
         if (!runtimeActive && !allowWhileInactive) continue;
         try {
-          const snapshot = JSON.stringify(backgroundSnapshot());
+          const snapshot = JSON.stringify(backgroundState.snapshot());
           if (snapshot === lastSavedRuntime) continue;
           await runBridge(
             () => bridge.setLocalStorage(STORAGE_KEYS.runtimeState, snapshot),
@@ -497,7 +323,7 @@ async function main(): Promise<void> {
       catch (err) { state.lastError = err instanceof Error ? err.message : String(err); paint(); return; }
       currentUrl = url;
       currentToken = tokenValue;
-      connectionSettings = {baseUrl: url, token: tokenValue, revision: SETTINGS_REVISION, clientId: displayClientId};
+      backgroundState.connection = {baseUrl: url, token: tokenValue, revision: SETTINGS_REVISION, clientId: displayClientId};
       scheduleRuntimePersist();
       runBridgeQuietly(() => bridge.setLocalStorage(STORAGE_KEYS.baseUrl, url), 'server URL save');
       runBridgeQuietly(() => bridge.setLocalStorage(STORAGE_KEYS.token, tokenValue), 'server token save');
@@ -981,13 +807,13 @@ async function main(): Promise<void> {
 
   // A late host restore must repaint immediately; otherwise the suspended
   // WebView can stay on its startup layout until the next long-poll response.
-  onHostStateRestored = () => {
+  backgroundState.onHostRestored = () => {
     if (state.confirmation && state.confirmation.expiresAt <= Date.now()) state.confirmation = null;
     paint();
     if (runtimeActive) void render();
     if (!disposed) void queueLifecycle(resumeRuntime);
   };
-  if (hostStateRestored) onHostStateRestored();
+  if (backgroundState.hostRestored) backgroundState.onHostRestored();
 
   /** Stop traffic and queued display work; only a final snapshot/report may cross the bridge. */
   async function pauseRuntime(): Promise<void> {
@@ -1083,7 +909,7 @@ async function main(): Promise<void> {
     setServer: async (url: string, tokenValue = '') => {
       client.configure(url, tokenValue);
       currentUrl = url; currentToken = tokenValue;
-      connectionSettings = {baseUrl:url, token:tokenValue, revision:SETTINGS_REVISION, clientId:displayClientId};
+      backgroundState.connection = {baseUrl:url, token:tokenValue, revision:SETTINGS_REVISION, clientId:displayClientId};
       scheduleRuntimePersist();
       await runBridge(() => bridge.setLocalStorage(STORAGE_KEYS.baseUrl, url));
       await runBridge(() => bridge.setLocalStorage(STORAGE_KEYS.token, tokenValue));

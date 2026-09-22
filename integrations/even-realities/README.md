@@ -34,3 +34,14 @@ origin in the allowlist. A generic public package cannot connect directly to
 arbitrary server addresses. The source manifest remains an unconfigured example; the
 pack script writes the installation-specific manifest locally, without tokens.
 See https://hub.evenrealities.com/docs/build/networking.
+
+## Runtime code
+
+`src/main.ts` coordinates the bridge, microphone, feed, and rendering lifecycle.
+`src/background-state.ts` owns the snapshot format, validation, and host restore
+hooks. It also ensures that a newer host snapshot takes precedence over the
+storage fallback and that pending network work and expired confirmations are
+never resumed. Register its host hooks before waiting for the bridge.
+
+The snapshot tests run without a device or network connection:
+`node --test integrations/even-realities/test/*.test.js` from the repository root.

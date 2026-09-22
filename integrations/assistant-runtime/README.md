@@ -14,6 +14,20 @@ Disabling learned memory stops learned fact/preference retrieval and mutation. E
 
 Apple TV settings accept `mediaPlayer`, `remoteEntity`, `addonSlug` for a configured Home Assistant add-on, or `baseUrl` plus `token` for a direct AI controller. `silentNavigation` and `shortReplies` preserve the default fast navigation and short power/playback replies but are owner-configurable. Commands continue through original selection and guard checks.
 
+## Code organization
+
+The runtime tool registry is composed in `server/tools/index.js`. Definitions live
+beside their execution handlers in domain modules (Home Assistant, display,
+memory, knowledge, Mac, automations, calculations, time, weather/speech, and
+vision). Shared command schemas and entity visibility checks have one home in
+`tools/schema.js` and `tools/entity-access.js`; tool calls still cross the same
+gateway and Home Assistant guards. Permission snapshots only span one synchronous
+operation and are never cached across requests.
+
+`server/automations.js` owns scheduling and execution. Its `automations/` directory
+holds the persistence adapter, pure rule helpers, and public response models so
+those concerns can evolve without mixing storage or formatting into scheduling.
+
 ## Process boundary
 
 The parent forks `server/index.js` with IPC, `CARVIS_RUNTIME_DIR`, and a random `CARVIS_RUNTIME_SECRET` of at least 32 characters. The worker listens on `127.0.0.1` with a dynamically selected port and reports `{type:'ready',port}`. Every HTTP request, including assets and preflight, requires the parent's `x-carvis-internal` header. Devices cannot connect directly. Parent disconnect, SIGTERM, and SIGINT stop the worker; there are no detached restarts.

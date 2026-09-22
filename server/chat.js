@@ -1,23 +1,8 @@
-import { resolvedMainModel } from './global-keys.js';
+import { resolvedMainModel } from "./global-keys.js";
 import { modelRound, toolOutput } from "./provider.js";
 import { text as checkedText } from "./validation.js";
 
-function executionRecords(conversation) {
-  const fields = ['success', 'accepted', 'verified', 'dryRun', 'declined', 'requiresConfirmation', 'error', 'message', 'id', 'status'];
-  const records = conversation.messages
-    .filter(m => m.role === 'event' && m.event?.type === 'confirmation_result' && m.event?.source === 'carvis_registry')
-    .slice(-16).map(m => ({
-      type:'confirmation_result', source:'carvis_registry', recordedAt:m.createdAt,
-      tool:String(m.event.tool || '').slice(0,80), confirmationId:String(m.event.confirmationId || '').slice(0,100),
-      decision:String(m.event.decision || '').slice(0,30), summary:String(m.event.summary || '').slice(0,1000),
-      outcome:Object.fromEntries(fields.flatMap(key => {
-        const value=m.event.outcome?.[key];
-        return ['string','boolean','number'].includes(typeof value) ? [[key,typeof value==='string'?value.slice(0,2000):value]] : [];
-      })),
-    }));
-  while (JSON.stringify(records).length > 16000) records.shift();
-  return records;
-}
+import { executionRecords, recentMessages } from "./conversation-context.js";
 
 export class Chat {
   constructor(store, registry, { round = modelRound } = {}) {
@@ -31,7 +16,12 @@ export class Chat {
     emit = () => {},
     signal,
   }) {
-    if(this.store.config.homeAssistant && (!this.store.config.homeAssistant.enabled || !this.store.config.homeAssistant.entitiesReviewed))throw Error('Complete your home setup before asking Carvis to act.');
+    if (
+      this.store.config.homeAssistant &&
+      (!this.store.config.homeAssistant.enabled ||
+        !this.store.config.homeAssistant.entitiesReviewed)
+    )
+      throw Error("Complete your home setup before asking Carvis to act.");
     text = checkedText(text, 16000);
     if (!text) throw Error("Enter a message.");
     const cfg = structuredClone(this.store.config);
@@ -48,25 +38,41 @@ export class Chat {
     try {
       this.store.append(conversation.id, "user", text);
       const handled = await this.registry.respond({
-        text, source, conversationId: conversation.id, emit, signal,
-        history: conversation.messages.filter(m => ['user', 'assistant'].includes(m.role)).slice(-24),
+        text,
+        source,
+        conversationId: conversation.id,
+        emit,
+        signal,
+        history: recentMessages(conversation),
         memory: this.store.config.homeAssistant ? [] : this.store.data.memory,
-        executionRecords: await this.registry.sanitize(executionRecords(conversation), { signal }),
+        executionRecords: await this.registry.sanitize(
+          executionRecords(conversation),
+          { signal },
+        ),
       });
       if (handled?.handled) {
         signal?.throwIfAborted();
-        reply = handled.reply || '';
-        if (reply) emit('delta', { text: reply });
-        const updated = this.store.append(conversation.id, 'assistant', reply, {
-          silent: handled.silent === true, integration: 'conversation-engine',
-          outcome: handled.outcome, tools: handled.actions || handled.calls || [],
+        reply = handled.reply || "";
+        if (reply) emit("delta", { text: reply });
+        const updated = this.store.append(conversation.id, "assistant", reply, {
+          silent: handled.silent === true,
+          integration: "conversation-engine",
+          outcome: handled.outcome,
+          tools: handled.actions || handled.calls || [],
         });
-        emit('done', { conversation: updated });
-        return { reply, silent: handled.silent === true, conversationId: conversation.id, conversation: updated };
+        emit("done", { conversation: updated });
+        return {
+          reply,
+          silent: handled.silent === true,
+          conversationId: conversation.id,
+          conversation: updated,
+        };
       }
       const instructions = [
         `You are ${cfg.profile.assistantName || "Carvis"}, a smart home controller and personal assistant. ${cfg.profile.personality || ""}`,
-        cfg.homeAssistant?.config?.homeName ? `The owner calls this home ${JSON.stringify(cfg.homeAssistant.config.homeName)}.` : "",
+        cfg.homeAssistant?.config?.homeName
+          ? `The owner calls this home ${JSON.stringify(cfg.homeAssistant.config.homeName)}.`
+          : "",
         cfg.profile.displayName
           ? `The user asks to be called ${cfg.profile.displayName}.`
           : "",
@@ -75,10 +81,10 @@ export class Chat {
       ]
         .filter(Boolean)
         .join("\n\n");
-      const messages = conversation.messages
-        .filter((m) => ["user", "assistant"].includes(m.role))
-        .slice(-24)
-        .map((m) => ({ role: m.role, content: m.content }));
+      const messages = recentMessages(conversation).map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
       for (let round = 0; round < 8; round++) {
         signal?.throwIfAborted();
         const enabled = await this.registry.tools({ signal });

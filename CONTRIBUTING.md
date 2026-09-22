@@ -22,6 +22,9 @@ repository.
 
 ## Make a change
 
+Read the [code organization guide](docs/architecture.md) to find the module that
+owns the behavior you are changing.
+
 1. Follow the [integration contract](docs/integration-development.md) for new
    abilities. Give each integration its own setup fields and permissions.
 2. Preserve entity selection, device guards, dry run, confirmation, and

@@ -21,12 +21,10 @@ import {
   hash,
   historicalIntent,
   inferClaim,
-  jaccard,
   normalize,
   stableJson,
   timeBucket,
   tokenize,
-  uniqueTokens,
 } from './lexical.js';
 import {
   buildNote,
@@ -35,6 +33,10 @@ import {
   normalizeNamespace,
   noteAffinity,
 } from './evolution.js';
+
+import { diversifyCandidates, scoreCandidates } from './retrieval.js';
+import { migrateDatabase } from './schema.js';
+import { json, legacyShape, nodeFromRow } from './records.js';
 
 const KINDS = new Set(['fact', 'preference', 'rule', 'observation']);
 const STATES = new Set(['active', 'superseded', 'contested', 'archived']);
@@ -47,15 +49,6 @@ const SOURCE_AUTHORITY = {
   carvis: 0.65,
   inference: 0.45,
 };
-
-function json(value, fallback = {}) {
-  if (value == null || value === '') return fallback;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return fallback;
-  }
-}
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, Number(value)));
@@ -85,81 +78,8 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function scoreDateRecency(timestamp, now, { halfLifeDays = 120, durable = false } = {}) {
-  if (durable) return 0.52;
-  const ageDays = Math.max(0, now - Number(timestamp || now)) / DAY;
-  return Math.exp(-ageDays / halfLifeDays);
-}
-
 function dynamicIn(values) {
   return values.length ? `(${values.map(() => '?').join(',')})` : '(NULL)';
-}
-
-/** Turn a row into DMR's public, provenance-bearing shape. */
-function nodeFromRow(row) {
-  if (!row) return null;
-  return {
-    id: row.id,
-    kind: row.kind,
-    text: row.text,
-    normalized: row.normalized,
-    source: row.source,
-    authority: Number(row.authority),
-    confidence: Number(row.confidence),
-    state: row.state,
-    pinned: Boolean(row.pinned),
-    durable: Boolean(row.durable),
-    createdAt: Number(row.created_at),
-    updatedAt: Number(row.updated_at),
-    validFrom: Number(row.valid_from),
-    validTo: row.valid_to == null ? null : Number(row.valid_to),
-    usedAt: row.used_at == null ? null : Number(row.used_at),
-    useCount: Number(row.use_count),
-    salience: Number(row.salience),
-    subject: row.subject,
-    predicate: row.predicate,
-    object: row.object,
-    slotKey: row.slot_key,
-    identityKey: row.identity_key,
-    namespace: row.namespace || 'owner',
-    keywords: json(row.keywords, []),
-    tags: json(row.tags, []),
-    contextText: row.context_text || '',
-    revision: Number(row.revision || 1),
-    supersededBy: row.superseded_by,
-    legacyId: row.legacy_id,
-    metadata: json(row.metadata, {}),
-  };
-}
-
-/** Shape expected by the current Carvis MemoryStore and dashboard. */
-function legacyShape(node) {
-  return {
-    id: node.id,
-    ts: node.createdAt,
-    updated_at: node.updatedAt,
-    kind: node.kind,
-    text: node.text,
-    source: node.source === 'import' ? 'owner' : node.source,
-    fingerprint: fingerprint(node.text),
-    pinned: node.pinned,
-    used_at: node.usedAt,
-    use_count: node.useCount,
-    // Extra fields are non-breaking to existing consumers and make the DMR
-    // data auditable in a richer future view.
-    dmr: {
-      state: node.state,
-      confidence: node.confidence,
-      validFrom: node.validFrom,
-      validTo: node.validTo,
-      legacyId: node.legacyId,
-      namespace: node.namespace,
-      keywords: node.keywords,
-      tags: node.tags,
-      contextText: node.contextText,
-      revision: node.revision,
-    },
-  };
 }
 
 export class DMRStore {
@@ -170,7 +90,7 @@ export class DMRStore {
     this.db = new DatabaseSync(dbPath);
     this.db.exec('PRAGMA journal_mode = WAL');
     this.db.exec('PRAGMA foreign_keys = ON');
-    this.#migrate();
+    migrateDatabase(this.db);
     // The memory can include personal context.  The database does not need to
     // be world-readable merely because Node created it that way by default.
     this.#protectFiles();
@@ -178,235 +98,6 @@ export class DMRStore {
 
   close() {
     this.db.close();
-  }
-
-  #migrate() {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS dmr_memories (
-        id             TEXT PRIMARY KEY,
-        kind           TEXT NOT NULL,
-        text           TEXT NOT NULL,
-        normalized     TEXT NOT NULL,
-        source         TEXT NOT NULL,
-        authority      REAL NOT NULL,
-        confidence     REAL NOT NULL,
-        state          TEXT NOT NULL,
-        pinned         INTEGER NOT NULL DEFAULT 0,
-        durable        INTEGER NOT NULL DEFAULT 1,
-        created_at     INTEGER NOT NULL,
-        updated_at     INTEGER NOT NULL,
-        valid_from     INTEGER NOT NULL,
-        valid_to       INTEGER,
-        used_at        INTEGER,
-        use_count      INTEGER NOT NULL DEFAULT 0,
-        salience       REAL NOT NULL DEFAULT 0.5,
-        subject        TEXT NOT NULL,
-        predicate      TEXT NOT NULL,
-        object         TEXT NOT NULL,
-        slot_key       TEXT NOT NULL,
-        identity_key   TEXT NOT NULL,
-        namespace      TEXT NOT NULL DEFAULT 'owner',
-        keywords       TEXT NOT NULL DEFAULT '[]',
-        tags           TEXT NOT NULL DEFAULT '[]',
-        context_text   TEXT NOT NULL DEFAULT '',
-        revision       INTEGER NOT NULL DEFAULT 1,
-        superseded_by  TEXT,
-        legacy_id      TEXT,
-        metadata       TEXT NOT NULL DEFAULT '{}',
-        FOREIGN KEY(superseded_by) REFERENCES dmr_memories(id) ON DELETE SET NULL
-      );
-      CREATE INDEX IF NOT EXISTS dmr_memories_identity ON dmr_memories(identity_key, state);
-      CREATE INDEX IF NOT EXISTS dmr_memories_slot ON dmr_memories(slot_key, state, valid_from DESC);
-      CREATE INDEX IF NOT EXISTS dmr_memories_kind ON dmr_memories(kind, state, pinned DESC, updated_at DESC);
-      CREATE INDEX IF NOT EXISTS dmr_memories_legacy ON dmr_memories(legacy_id);
-
-      CREATE TABLE IF NOT EXISTS dmr_episodes (
-        id             TEXT PRIMARY KEY,
-        source         TEXT NOT NULL,
-        title          TEXT NOT NULL,
-        started_at     INTEGER NOT NULL,
-        ended_at       INTEGER,
-        summary        TEXT NOT NULL DEFAULT '',
-        metadata       TEXT NOT NULL DEFAULT '{}'
-      );
-      CREATE INDEX IF NOT EXISTS dmr_episodes_started ON dmr_episodes(started_at DESC);
-
-      CREATE TABLE IF NOT EXISTS dmr_evidence (
-        id             TEXT PRIMARY KEY,
-        memory_id      TEXT NOT NULL,
-        episode_id     TEXT,
-        source         TEXT NOT NULL,
-        stance         TEXT NOT NULL,
-        quote          TEXT NOT NULL,
-        observed_at    INTEGER NOT NULL,
-        confidence     REAL NOT NULL,
-        metadata       TEXT NOT NULL DEFAULT '{}',
-        FOREIGN KEY(memory_id) REFERENCES dmr_memories(id) ON DELETE CASCADE,
-        FOREIGN KEY(episode_id) REFERENCES dmr_episodes(id) ON DELETE SET NULL
-      );
-      CREATE INDEX IF NOT EXISTS dmr_evidence_memory ON dmr_evidence(memory_id, observed_at DESC);
-      CREATE INDEX IF NOT EXISTS dmr_evidence_episode ON dmr_evidence(episode_id, observed_at DESC);
-
-      CREATE TABLE IF NOT EXISTS dmr_episode_members (
-        episode_id     TEXT NOT NULL,
-        memory_id      TEXT NOT NULL,
-        added_at       INTEGER NOT NULL,
-        PRIMARY KEY(episode_id, memory_id),
-        FOREIGN KEY(episode_id) REFERENCES dmr_episodes(id) ON DELETE CASCADE,
-        FOREIGN KEY(memory_id) REFERENCES dmr_memories(id) ON DELETE CASCADE
-      );
-
-      CREATE TABLE IF NOT EXISTS dmr_entities (
-        id             TEXT PRIMARY KEY,
-        canonical      TEXT NOT NULL UNIQUE,
-        type           TEXT NOT NULL,
-        created_at     INTEGER NOT NULL,
-        updated_at     INTEGER NOT NULL,
-        metadata       TEXT NOT NULL DEFAULT '{}'
-      );
-      CREATE TABLE IF NOT EXISTS dmr_memory_entities (
-        memory_id      TEXT NOT NULL,
-        entity_id      TEXT NOT NULL,
-        PRIMARY KEY(memory_id, entity_id),
-        FOREIGN KEY(memory_id) REFERENCES dmr_memories(id) ON DELETE CASCADE,
-        FOREIGN KEY(entity_id) REFERENCES dmr_entities(id) ON DELETE CASCADE
-      );
-      CREATE INDEX IF NOT EXISTS dmr_memory_entities_entity ON dmr_memory_entities(entity_id, memory_id);
-
-      CREATE TABLE IF NOT EXISTS dmr_links (
-        memory_a       TEXT NOT NULL,
-        memory_b       TEXT NOT NULL,
-        relation       TEXT NOT NULL,
-        weight         REAL NOT NULL,
-        created_at     INTEGER NOT NULL,
-        updated_at     INTEGER NOT NULL,
-        PRIMARY KEY(memory_a, memory_b, relation),
-        FOREIGN KEY(memory_a) REFERENCES dmr_memories(id) ON DELETE CASCADE,
-        FOREIGN KEY(memory_b) REFERENCES dmr_memories(id) ON DELETE CASCADE
-      );
-      CREATE INDEX IF NOT EXISTS dmr_links_a ON dmr_links(memory_a, weight DESC);
-      CREATE INDEX IF NOT EXISTS dmr_links_b ON dmr_links(memory_b, weight DESC);
-
-      CREATE TABLE IF NOT EXISTS dmr_pattern_observations (
-        id             TEXT PRIMARY KEY,
-        signature      TEXT NOT NULL,
-        action_key     TEXT NOT NULL,
-        context_key    TEXT NOT NULL,
-        day_key        TEXT NOT NULL,
-        bucket         INTEGER NOT NULL,
-        day_class      TEXT NOT NULL,
-        source         TEXT NOT NULL,
-        outcome        TEXT NOT NULL,
-        observed_at    INTEGER NOT NULL,
-        metadata       TEXT NOT NULL DEFAULT '{}'
-      );
-      CREATE INDEX IF NOT EXISTS dmr_pattern_obs_signature ON dmr_pattern_observations(signature, observed_at DESC);
-      CREATE INDEX IF NOT EXISTS dmr_pattern_obs_action ON dmr_pattern_observations(action_key, bucket, observed_at DESC);
-
-      CREATE TABLE IF NOT EXISTS dmr_patterns (
-        id             TEXT PRIMARY KEY,
-        signature      TEXT NOT NULL UNIQUE,
-        state          TEXT NOT NULL,
-        narrative      TEXT NOT NULL,
-        action_key     TEXT NOT NULL,
-        context_key    TEXT NOT NULL,
-        observations   INTEGER NOT NULL,
-        distinct_days  INTEGER NOT NULL,
-        support        REAL NOT NULL,
-        confidence     REAL NOT NULL,
-        first_seen     INTEGER NOT NULL,
-        last_seen      INTEGER NOT NULL,
-        dismissed_at   INTEGER,
-        metadata       TEXT NOT NULL DEFAULT '{}'
-      );
-      CREATE INDEX IF NOT EXISTS dmr_patterns_state ON dmr_patterns(state, last_seen DESC);
-
-      CREATE TABLE IF NOT EXISTS dmr_events (
-        id             TEXT PRIMARY KEY,
-        type           TEXT NOT NULL,
-        occurred_at    INTEGER NOT NULL,
-        data           TEXT NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS dmr_events_time ON dmr_events(occurred_at DESC);
-
-      CREATE TABLE IF NOT EXISTS dmr_retrieval_audit (
-        id             TEXT PRIMARY KEY,
-        query          TEXT NOT NULL,
-        created_at     INTEGER NOT NULL,
-        result          TEXT NOT NULL
-      );
-
-      /* A-MEM-inspired evolving note metadata. Claim text remains immutable;
-         only the derived context/tags evolve, with every revision retained. */
-      CREATE TABLE IF NOT EXISTS dmr_note_revisions (
-        id             TEXT PRIMARY KEY,
-        memory_id      TEXT NOT NULL,
-        revision       INTEGER NOT NULL,
-        reason         TEXT NOT NULL,
-        context_text   TEXT NOT NULL,
-        keywords       TEXT NOT NULL,
-        tags           TEXT NOT NULL,
-        created_at     INTEGER NOT NULL,
-        FOREIGN KEY(memory_id) REFERENCES dmr_memories(id) ON DELETE CASCADE
-      );
-      CREATE INDEX IF NOT EXISTS dmr_note_revisions_memory
-        ON dmr_note_revisions(memory_id, revision DESC);
-
-      /* Background reflections are replaceable derived context. Their own
-         revision ledger makes self-organization inspectable and reversible. */
-      CREATE TABLE IF NOT EXISTS dmr_reflections (
-        id             TEXT PRIMARY KEY,
-        namespace      TEXT NOT NULL,
-        facet_type     TEXT NOT NULL,
-        facet_key      TEXT NOT NULL,
-        title          TEXT NOT NULL,
-        summary        TEXT NOT NULL,
-        keywords       TEXT NOT NULL,
-        member_ids     TEXT NOT NULL,
-        confidence     REAL NOT NULL,
-        active         INTEGER NOT NULL DEFAULT 1,
-        revision       INTEGER NOT NULL DEFAULT 1,
-        created_at     INTEGER NOT NULL,
-        updated_at     INTEGER NOT NULL,
-        UNIQUE(namespace, facet_type, facet_key)
-      );
-      CREATE INDEX IF NOT EXISTS dmr_reflections_scope
-        ON dmr_reflections(namespace, updated_at DESC);
-      CREATE TABLE IF NOT EXISTS dmr_reflection_revisions (
-        id             TEXT PRIMARY KEY,
-        reflection_id  TEXT NOT NULL,
-        revision       INTEGER NOT NULL,
-        summary        TEXT NOT NULL,
-        member_ids     TEXT NOT NULL,
-        created_at     INTEGER NOT NULL,
-        FOREIGN KEY(reflection_id) REFERENCES dmr_reflections(id) ON DELETE CASCADE
-      );
-    `);
-    this.#ensureColumn('dmr_memories', 'namespace', "TEXT NOT NULL DEFAULT 'owner'");
-    this.#ensureColumn('dmr_memories', 'keywords', "TEXT NOT NULL DEFAULT '[]'");
-    this.#ensureColumn('dmr_memories', 'tags', "TEXT NOT NULL DEFAULT '[]'");
-    this.#ensureColumn('dmr_memories', 'context_text', "TEXT NOT NULL DEFAULT ''");
-    this.#ensureColumn('dmr_memories', 'revision', 'INTEGER NOT NULL DEFAULT 1');
-    this.#ensureColumn('dmr_reflections', 'active', 'INTEGER NOT NULL DEFAULT 1');
-    this.db.exec('CREATE INDEX IF NOT EXISTS dmr_memories_namespace ON dmr_memories(namespace, state, updated_at DESC)');
-    // Older DMR databases predate namespaces. Scope their conflict keys once so
-    // an identical claim in two workspaces can coexist without interference.
-    this.db.exec(`
-      UPDATE dmr_memories
-         SET namespace = 'owner'
-       WHERE namespace IS NULL OR namespace = '';
-      UPDATE dmr_memories
-         SET slot_key = namespace || '|' || slot_key,
-             identity_key = namespace || '|' || identity_key
-       WHERE substr(slot_key, 1, length(namespace) + 1) != namespace || '|';
-    `);
-  }
-
-  #ensureColumn(table, column, declaration) {
-    const columns = this.db.prepare(`PRAGMA table_info(${table})`).all();
-    if (!columns.some((item) => item.name === column)) {
-      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${declaration}`);
-    }
   }
 
   #transaction(fn) {
@@ -1098,9 +789,10 @@ export class DMRStore {
         ORDER BY weight DESC LIMIT 80`,
     ).all(...seedIds, ...seedIds);
     const boosts = new Map();
+    const seeds = new Set(seedIds);
     for (const row of rows) {
-      const other = seedIds.includes(row.memory_a) ? row.memory_b : row.memory_a;
-      if (!seedIds.includes(other)) boosts.set(other, Math.max(boosts.get(other) || 0, Number(row.weight)));
+      const other = seeds.has(row.memory_a) ? row.memory_b : row.memory_a;
+      if (!seeds.has(other)) boosts.set(other, Math.max(boosts.get(other) || 0, Number(row.weight)));
     }
     return boosts;
   }
@@ -1115,64 +807,24 @@ export class DMRStore {
     asOf = null, now = this.now(), audit = true,
   } = {}) {
     const text = cleanText(query, 2_000);
-    const terms = uniqueTokens(text);
     const wantsHistory = asOf != null || (includeHistorical ?? historicalIntent(text));
     const wantsCurrent = asOf == null && currentIntent(text);
     const asOfTime = asOf == null ? null : (asOf instanceof Date
       ? asOf.getTime()
       : (Number.isFinite(Number(asOf)) ? Number(asOf) : Date.parse(String(asOf))));
     const rows = this.#eligibleRows(kinds, { includeHistorical: wantsHistory, namespaces, asOf });
-    const queryEntities = new Set(extractEntities(text));
-    const documents = rows.map((node) => new Set(tokenize(
-      `${node.text} ${node.subject} ${node.predicate} ${node.object} ${node.contextText} ${node.keywords.join(' ')} ${node.tags.join(' ')}`,
-    )));
-    const df = new Map();
-    for (const document of documents) for (const term of document) df.set(term, (df.get(term) || 0) + 1);
-    const totalIdf = terms.reduce((sum, term) => sum + Math.log(1 + rows.length / (df.get(term) || 1)), 0) || 1;
     const entitiesByNode = this.#entityNamesFor(rows.map((row) => row.id));
-    const candidates = new Map();
-
-    rows.forEach((node, index) => {
-      const tokens = documents[index];
-      let lexicalRaw = 0;
-      const matched = [];
-      for (const term of terms) {
-        if (tokens.has(term)) {
-          lexicalRaw += Math.log(1 + rows.length / (df.get(term) || 1));
-          matched.push(term);
-        }
-      }
-      const lexical = lexicalRaw / totalIdf;
-      const entities = entitiesByNode.get(node.id) || new Set();
-      const entityHits = [...queryEntities].filter((entity) => entities.has(entity));
-      const phrase = normalize(node.text).includes(normalize(text)) || (text.length > 8 && normalize(text).includes(normalize(node.text)));
-      const fallbackEligible = !terms.length;
-      if (!lexical && !entityHits.length && !fallbackEligible) return;
-
-      let score = lexical * 5;
-      const reasons = [];
-      if (matched.length) reasons.push(`matched ${matched.join(', ')}`);
-      if (phrase) { score += 0.8; reasons.push('phrase match'); }
-      if (entityHits.length) { score += entityHits.length * 0.9; reasons.push(`shared entity ${entityHits.join(', ')}`); }
-      const recency = scoreDateRecency(node.updatedAt, asOfTime ?? now, { durable: node.durable || node.kind !== 'observation' });
-      score += recency * 0.7;
-      score += node.authority * 0.36 + node.confidence * 0.42 + node.salience * 0.35;
-      score += Math.min(0.36, Math.log1p(node.useCount) * 0.11);
-      if (node.pinned) { score += 1; reasons.push('pinned'); }
-      if (node.state === 'contested') { score += 0.25; reasons.push('contested: surface uncertainty'); }
-      if (asOfTime != null) { score += 0.55; reasons.push(`true at ${new Date(asOfTime).toISOString()}`); }
-      if (wantsCurrent && node.state === 'active') { score += 0.55; reasons.push('current truth'); }
-      if (wantsHistory && node.state === 'superseded') { score += 0.8; reasons.push('historical truth'); }
-      candidates.set(node.id, { node, score, lexical, terms: matched, reasons, entities });
+    const candidates = scoreCandidates(rows, {
+      text, entitiesByNode, asOfTime, now, wantsCurrent, wantsHistory,
     });
-
     // One-hop associative recall lets a new question recover the surrounding
     // episode ("where was the printer when we discussed calibration?") without
     // spraying the full memory graph into the prompt.
     const seedIds = [...candidates.values()].sort((a, b) => b.score - a.score).slice(0, 8).map((item) => item.node.id);
     const graphBoosts = this.#linkedCandidateIds(seedIds);
+    const nodesById = new Map(rows.map((node) => [node.id, node]));
     for (const [id, weight] of graphBoosts) {
-      const node = rows.find((row) => row.id === id);
+      const node = nodesById.get(id);
       if (!node) continue;
       const existing = candidates.get(id);
       if (existing) {
@@ -1190,27 +842,7 @@ export class DMRStore {
       }
     }
 
-    const desired = clamp(limit, 1, 50);
-    const sorted = [...candidates.values()].sort((a, b) => b.score - a.score);
-    const selected = [];
-    // MMR-style diversity: an answer needs several useful pieces of context,
-    // not six rewordings of the same location claim.
-    while (sorted.length && selected.length < desired) {
-      let bestIndex = 0;
-      let bestScore = -Infinity;
-      for (let index = 0; index < sorted.length; index += 1) {
-        const candidate = sorted[index];
-        const overlap = selected.reduce((max, chosen) => Math.max(
-          max,
-          jaccard(candidate.node.text, chosen.node.text),
-          candidate.node.slotKey === chosen.node.slotKey ? 0.88 : 0,
-        ), 0);
-        const diversified = candidate.score - overlap * 1.18;
-        if (diversified > bestScore) { bestScore = diversified; bestIndex = index; }
-      }
-      const [choice] = sorted.splice(bestIndex, 1);
-      selected.push({ ...choice, score: Number(choice.score.toFixed(3)), diversifiedScore: Number(bestScore.toFixed(3)) });
-    }
+    const selected = diversifyCandidates(candidates.values(), clamp(limit, 1, 50));
 
     const result = selected.map((item) => ({
       memory: legacyShape(item.node),

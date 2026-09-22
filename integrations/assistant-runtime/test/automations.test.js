@@ -1422,3 +1422,45 @@ test('routine memory references survive migration to Continuity IDs and respect 
  assert.equal(engine.resolve('memory.item.old_memory_id.exists'),true);
  items=[];assert.equal(engine.resolve('memory.item.old_memory_id.exists'),false);
 });
+
+test('weather and location lookup bound permission reads and immediately honor revocation', () => {
+  const h = makeHarness();
+  for (let index = 0; index < 100; index += 1) {
+    h.ha.states.set(`weather.hidden_${index}`, haState(`weather.hidden_${index}`, 'sunny', h.now()));
+    h.ha.states.set(`person.hidden_${index}`, haState(`person.hidden_${index}`, 'home', h.now()));
+  }
+  h.ha.states.set('weather.selected', haState('weather.selected', 'cloudy', h.now()));
+  h.ha.states.set('person.selected', haState('person.selected', 'home', h.now(), { friendly_name: 'Test Owner' }));
+  const config = { entities: { observed: ['weather.selected', 'person.selected'], controlled: [] } };
+  const engine = h.engine();
+  let reads = 0;
+  engine.getConfig = () => { reads += 1; return config; };
+
+  assert.equal(engine.resolve('weather.status'), 'cloudy');
+  assert.equal(reads, 1);
+  assert.equal(engine.resolve('location.test_owner.state'), 'home');
+  assert.equal(reads, 2);
+
+  config.entities.observed.length = 0;
+  assert.equal(engine.resolve('weather.status'), undefined);
+  assert.equal(engine.resolve('location.test_owner.state'), undefined);
+  assert.equal(reads, 4);
+});
+
+test('rule validation reads each entity history once and refreshes it for subsequent validations', () => {
+  const h = makeHarness();
+  h.ha.states.set('light.selected', haState('light.selected', 'off', h.now()));
+  const engine = h.engine();
+  const definition = rule({
+    metadata: { createdBy: 'carvis' },
+    when: { all: [stateEquals('light.selected', 'on'), stateEquals('light.selected', 'off')] },
+    if: stateEquals('light.selected', 'on'),
+  });
+  const originalRead = h.store.recentValueChanges;
+  let reads = 0;
+  h.store.recentValueChanges = (...args) => { reads += 1; return originalRead(...args); };
+  assert.equal(engine.validate(definition).ok, true);
+  assert.equal(reads, 1);
+  assert.equal(engine.validate(definition).ok, true);
+  assert.equal(reads, 2);
+});

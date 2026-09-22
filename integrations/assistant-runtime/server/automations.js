@@ -11,40 +11,19 @@ import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 
 import {
-  archiveAutomationRule,
-  cancelAutomationTimer,
-  createAutomationTimer,
-  dueAutomationTimers,
-  deleteAutomationVariable,
-  getAutomationRule,
-  getAutomationTimer,
-  getAutomationVariable,
-  incrementAutomationVariable,
-  listAutomationRules,
-  listAutomationRuns,
-  listAutomationTimers,
-  listAutomationVariables,
-  markAutomationTimerFired,
-  pauseAutomationTimer,
-  pruneAutomationOperationalHistory,
-  recentEvents,
-  recentAutomationValueChanges,
-  recordAutomationRun,
-  recordAutomationValueChange,
-  rescheduleAutomationTimer,
-  resumeAutomationTimer,
-  saveAutomationRule,
-  setAutomationRuleEnabled,
-  setAutomationVariable,
-  snoozeAutomationTimer,
-  updateAutomationRuleEvaluation,
-} from './db.js';
+  slug, nowIso, finiteTime, clone, isPlainObject, hasReferenceValue,
+  unwrapStaticTemplates, ownPath, refsInRule, conditionUsesEventEdge,
+  whenUsesEventWithoutEdge, edgeBranchResult, conditionEdgeUnderNot,
+  predicatesInCondition, temporalRefProblem,
+} from './automations/rule-helpers.js';
+import { publicRule, publicTimer, publicRun } from './automations/public-model.js';
+import { DEFAULT_STORE } from './automations/store.js';
+import { isVisibleEntity, visibleEntityIds } from './tools/entity-access.js';
 import { log } from './log.js';
 import { requiresOwnerConfirmation } from './guards.js';
 import { nextAlarmOccurrence } from './automation-utils.js';
 import {
   RULE_SCHEMA_VERSION,
-  evaluateCondition,
   evaluateRule,
   materializeActions,
   RuleEvaluationError,
@@ -66,252 +45,7 @@ const MAX_SAVED_RULES = 500;
 // Operational history is retained for thirty days. A temporal condition beyond
 // that would look deterministic while silently relying on pruned evidence.
 const MAX_TEMPORAL_WINDOW_MS = 30 * 24 * 60 * 60 * 1_000;
-
-const DEFAULT_STORE = {
-  archiveRule: archiveAutomationRule,
-  cancelTimer: cancelAutomationTimer,
-  createTimer: createAutomationTimer,
-  dueTimers: dueAutomationTimers,
-  deleteVariable: deleteAutomationVariable,
-  getRule: getAutomationRule,
-  getTimer: getAutomationTimer,
-  getVariable: getAutomationVariable,
-  incrementVariable: incrementAutomationVariable,
-  listRules: listAutomationRules,
-  listRuns: listAutomationRuns,
-  listTimers: listAutomationTimers,
-  listVariables: listAutomationVariables,
-  markTimerFired: markAutomationTimerFired,
-  pauseTimer: pauseAutomationTimer,
-  prune: pruneAutomationOperationalHistory,
-  recentEvents,
-  recentValueChanges: recentAutomationValueChanges,
-  recordValueChange: recordAutomationValueChange,
-  recordRun: recordAutomationRun,
-  resumeTimer: resumeAutomationTimer,
-  rescheduleTimer: rescheduleAutomationTimer,
-  saveRule: saveAutomationRule,
-  setRuleEnabled: setAutomationRuleEnabled,
-  setVariable: setAutomationVariable,
-  snoozeTimer: snoozeAutomationTimer,
-  updateEvaluation: updateAutomationRuleEvaluation,
-};
-
-function slug(value, fallback = 'item') {
-  return String(value || fallback)
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 80) || fallback;
-}
-
-function nowIso(ms = Date.now()) {
-  return new Date(ms).toISOString();
-}
-
-function finiteTime(value) {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  const parsed = Date.parse(String(value || ''));
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function clone(value) {
-  return value == null ? value : structuredClone(value);
-}
-
-function isPlainObject(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function hasReferenceValue(value) {
-  let dynamic = false;
-  walk(value, (node) => {
-    if (isPlainObject(node) && Object.keys(node).length === 1 && typeof node.ref === 'string') dynamic = true;
-  });
-  return dynamic;
-}
-
-function unwrapStaticTemplates(value) {
-  if (Array.isArray(value)) return value.map(unwrapStaticTemplates);
-  if (!isPlainObject(value)) return clone(value);
-  if (Object.keys(value).length === 1 && Object.hasOwn(value, 'literal')) return clone(value.literal);
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, unwrapStaticTemplates(item)]));
-}
-
-function ownPath(value, path) {
-  let current = value;
-  for (const segment of String(path || '').split('.').filter(Boolean)) {
-    if (!isPlainObject(current) || !Object.hasOwn(current, segment)) return undefined;
-    current = current[segment];
-  }
-  return current;
-}
-
-function walk(value, visitor) {
-  if (!value || typeof value !== 'object') return;
-  visitor(value);
-  if (Array.isArray(value)) {
-    for (const item of value) walk(item, visitor);
-  } else {
-    for (const item of Object.values(value)) walk(item, visitor);
-  }
-}
-
-export function refsInRule(rule) {
-  const refs = new Set();
-  walk(rule, (node) => {
-    if (typeof node.ref === 'string' && Object.keys(node).length === 1) refs.add(node.ref);
-  });
-  return [...refs];
-}
-
-function conditionUsesEventEdge(condition) {
-  let found = false;
-  walk(condition, (node) => {
-    if (node.op === 'changed_to' || node.op === 'changed_from') found = true;
-  });
-  return found;
-}
-
-/** A WHEN that reads an event needs an event edge to actually start a run. */
-function whenUsesEventWithoutEdge(condition) {
-  const readsEvent = predicatesInCondition(condition, (node) =>
-    typeof node.left?.ref === 'string' && node.left.ref.startsWith('event.'),
-  ).length > 0;
-  return readsEvent && !conditionUsesEventEdge(condition);
-}
-
-function edgeBranchResult(condition, context) {
-  if (!isPlainObject(condition)) return { value: false, edgeMatched: false };
-  if (condition.op) {
-    const value = evaluateCondition(condition, context);
-    return {
-      value,
-      edgeMatched: value && (condition.op === 'changed_to' || condition.op === 'changed_from'),
-    };
-  }
-  if (Array.isArray(condition.all)) {
-    const children = condition.all.map((child) => edgeBranchResult(child, context));
-    const value = children.every((child) => child.value);
-    return { value, edgeMatched: value && children.some((child) => child.edgeMatched) };
-  }
-  if (Array.isArray(condition.any)) {
-    const children = condition.any.map((child) => edgeBranchResult(child, context));
-    return {
-      value: children.some((child) => child.value),
-      edgeMatched: children.some((child) => child.value && child.edgeMatched),
-    };
-  }
-  if (condition.not) {
-    const child = edgeBranchResult(condition.not, context);
-    return { value: !child.value, edgeMatched: false };
-  }
-  return { value: false, edgeMatched: false };
-}
-
-function conditionEdgeUnderNot(condition, beneathNot = false) {
-  if (!isPlainObject(condition)) return false;
-  if (condition.op === 'changed_to' || condition.op === 'changed_from') return beneathNot;
-  if (Array.isArray(condition.all)) return condition.all.some((child) => conditionEdgeUnderNot(child, beneathNot));
-  if (Array.isArray(condition.any)) return condition.any.some((child) => conditionEdgeUnderNot(child, beneathNot));
-  if (condition.not) return conditionEdgeUnderNot(condition.not, true);
-  return false;
-}
-
-function predicatesInCondition(condition, predicate, found = []) {
-  if (!isPlainObject(condition)) return found;
-  if (condition.op) {
-    if (predicate(condition)) found.push(condition);
-    return found;
-  }
-  if (Array.isArray(condition.all)) for (const child of condition.all) predicatesInCondition(child, predicate, found);
-  if (Array.isArray(condition.any)) for (const child of condition.any) predicatesInCondition(child, predicate, found);
-  if (condition.not) predicatesInCondition(condition.not, predicate, found);
-  return found;
-}
-
-function temporalRefProblem(op, ref) {
-  const changed = op === 'changed_to' || op === 'changed_from';
-  const held = op === 'for_duration' || op === 'has_been';
-  const occurrence = op === 'within' || op === 'hasnt_happened';
-  if (!changed && !held && !occurrence) return null;
-
-  const haState = /^ha\.[^.]+\..+\.state$/.test(ref);
-  const locationState = /^location\.[^.]+(?:\.state)?$/.test(ref);
-  const weatherStatus = ref === 'weather.status' || /^weather\.[^.]+\.status$/.test(ref);
-  const variable = /^variable\.[A-Za-z_][A-Za-z0-9_.:-]*$/.test(ref);
-  // `.state` remains a convenient read alias, but persisted transitions are
-  // deliberately recorded under one canonical `.status` key. Accepting the
-  // alias for edge/occurrence operators would create rules that never fire.
-  const timerStatus = /^(?:timer|alarm)\.[^.]+\.status$/.test(ref);
-  const event = ref === 'event.type' || ref === 'event.source' || ref.startsWith('event.data.');
-
-  if (changed && event) {
-    if (op === 'changed_from') return 'changed_from is not meaningful for an event; use changed_to event.type/source/data instead';
-    return null;
-  }
-  if (changed && (haState || locationState || weatherStatus || variable || timerStatus)) return null;
-  if (held && (haState || locationState || weatherStatus || variable)) return null;
-  if (occurrence && (haState || locationState || weatherStatus || variable || timerStatus || event)) return null;
-  return `${op} is not supported for ${ref}; choose a state/status/event/variable reference with durable transition history`;
-}
-
-function publicRule(row) {
-  if (!row) return null;
-  return {
-    ...clone(row.definition),
-    id: row.id,
-    name: row.name,
-    enabled: row.enabled,
-    revision: row.revision,
-    archived: row.archived,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    createdBy: row.created_by,
-    lastEvaluatedAt: row.last_evaluated_at,
-    lastFiredAt: row.last_fired_at,
-    fireCount: row.fire_count,
-    whileIterations: row.while_iterations || 0,
-    lastMatch: row.last_match,
-    lastOutcome: row.last_outcome,
-    lastError: row.last_error,
-    summary: summarizeRule(row.definition),
-  };
-}
-
-function publicTimer(timer, now = Date.now()) {
-  if (!timer) return null;
-  return {
-    id: timer.id,
-    name: timer.name,
-    kind: timer.kind,
-    status: timer.status,
-    createdAt: timer.created_at,
-    dueAt: timer.due_at,
-    dueAtIso: nowIso(timer.due_at),
-    remainingMs: timer.status === 'paused'
-      ? timer.paused_remaining_ms
-      : Math.max(0, timer.due_at - now),
-    repeatMs: timer.repeat_ms,
-    ruleId: timer.rule_id,
-    firedAt: timer.fired_at,
-    payload: clone(timer.payload || {}),
-  };
-}
-
-function publicRun(run) {
-  return {
-    id: run.id,
-    ruleId: run.rule_id,
-    ts: run.ts,
-    trigger: clone(run.trigger),
-    outcome: run.outcome,
-    actions: clone(run.actions),
-    error: run.error,
-    ms: run.ms,
-  };
-}
+const WEATHER_FIELDS = new Set(['status', 'temperature', 'humidity', 'pressure', 'wind_speed', 'wind_bearing', 'visibility', 'forecast']);
 
 export class AutomationEngine {
   constructor({
@@ -514,12 +248,11 @@ export class AutomationEngine {
   }
 
   #visibleEntityIds() {
-    const entities = this.getConfig?.()?.entities || {};
-    return new Set([...(entities.observed || []), ...(entities.controlled || [])]);
+    return visibleEntityIds(() => this.getConfig?.());
   }
 
   #isVisibleEntity(entityId) {
-    return this.#visibleEntityIds().has(entityId);
+    return isVisibleEntity(() => this.getConfig?.(), entityId);
   }
 
   #toolActionProblem(name, args = {}) {
@@ -612,6 +345,9 @@ export class AutomationEngine {
   #integrationErrors(rule) {
     const errors = [];
     const metadata = rule.metadata || {};
+    const visible = metadata.createdBy === 'carvis' ? this.#visibleEntityIds() : null;
+    const stateChoices = new Map();
+    let eventChoices;
     if (Object.hasOwn(metadata, 'once') && typeof metadata.once !== 'boolean') {
       errors.push({ path: '$.metadata.once', code: 'type', message: 'once must be true or false' });
     }
@@ -630,7 +366,7 @@ export class AutomationEngine {
     if (metadata.createdBy === 'carvis') {
       for (const ref of refsInRule(rule)) {
         const haRef = this.#parseHaRef(ref);
-        if (haRef && !this.#isVisibleEntity(haRef.entityId)) {
+        if (haRef && !visible.has(haRef.entityId)) {
           errors.push({ path: '$', code: 'entity_visibility', message: 'a protocol may only reference entities available to Carvis' });
           break;
         }
@@ -645,13 +381,14 @@ export class AutomationEngine {
           const value = node.left?.ref ? node.right?.literal : node.left?.literal;
           if (typeof value !== 'string') continue;
           let choices;
-          if (reference === 'event.type') choices = this.#eventChoices().map((event) => event.type);
+          if (reference === 'event.type') choices = eventChoices ??= this.#eventChoices().map((event) => event.type);
           const haRef = this.#parseHaRef(reference || '');
-          if (haRef?.field === 'state' && this.#isVisibleEntity(haRef.entityId)) {
+          if (haRef?.field === 'state' && visible.has(haRef.entityId)) {
             const state = this.ha.states.get(haRef.entityId);
             // Numeric readings and free-form text are not enumerated states.
             if (state?.attributes?.unit_of_measurement || (value.trim() !== '' && Number.isFinite(Number(value))) || ['input_text', 'text'].includes(haRef.entityId.split('.')[0])) continue;
-            choices = this.#stateChoices(haRef.entityId);
+            if (!stateChoices.has(haRef.entityId)) stateChoices.set(haRef.entityId, this.#stateChoices(haRef.entityId));
+            choices = stateChoices.get(haRef.entityId);
           }
           if (choices && !choices.includes(value)) errors.push({
             path: `$.${stage}`, code: 'unverified_trigger_value',
@@ -1317,27 +1054,30 @@ export class AutomationEngine {
 
   #locationState(person) {
     const wanted = slug(person);
+    const visible = this.#visibleEntityIds();
     const exact = this.ha.states.get(`person.${wanted}`) || this.ha.states.get(`device_tracker.${wanted}`);
-    if (exact && this.#isVisibleEntity(exact.entity_id)) return exact;
-    return [...this.ha.states.values()].find((state) => {
-      if (!state.entity_id.startsWith('person.') && !state.entity_id.startsWith('device_tracker.')) return false;
-      return this.#isVisibleEntity(state.entity_id) && slug(state.attributes?.friendly_name || state.entity_id.split('.')[1]) === wanted;
-    });
+    if (exact && visible.has(exact.entity_id)) return exact;
+    for (const state of this.ha.states.values()) {
+      if (!state.entity_id.startsWith('person.') && !state.entity_id.startsWith('device_tracker.')) continue;
+      if (visible.has(state.entity_id) && slug(state.attributes?.friendly_name || state.entity_id.split('.')[1]) === wanted) return state;
+    }
   }
 
   #weatherEntity(requested = '') {
-    if (requested && this.ha.states.has(requested) && this.#isVisibleEntity(requested)) return this.ha.states.get(requested);
+    const visible = this.#visibleEntityIds();
+    if (requested && this.ha.states.has(requested) && visible.has(requested)) return this.ha.states.get(requested);
     const id = requested.startsWith('weather.') ? requested : `weather.${requested}`;
-    if (requested && this.ha.states.has(id) && this.#isVisibleEntity(id)) return this.ha.states.get(id);
-    return [...this.ha.states.values()].find((state) => state.entity_id.startsWith('weather.') && this.#isVisibleEntity(state.entity_id));
+    if (requested && this.ha.states.has(id) && visible.has(id)) return this.ha.states.get(id);
+    for (const state of this.ha.states.values()) {
+      if (state.entity_id.startsWith('weather.') && visible.has(state.entity_id)) return state;
+    }
   }
 
   #weatherValue(path) {
-    const knownFields = new Set(['status', 'temperature', 'humidity', 'pressure', 'wind_speed', 'wind_bearing', 'visibility', 'forecast']);
     const parts = path.split('.');
     let field = parts.at(-1);
     let requested = parts.slice(0, -1).join('.');
-    if (!knownFields.has(field)) { requested = path; field = 'status'; }
+    if (!WEATHER_FIELDS.has(field)) { requested = path; field = 'status'; }
     const state = this.#weatherEntity(requested);
     if (!state) return undefined;
     if (field === 'status') return state.state;
@@ -1933,4 +1673,4 @@ export class AutomationEngine {
   }
 }
 
-export { publicRule, publicTimer };
+export { refsInRule, publicRule, publicTimer };

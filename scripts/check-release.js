@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
 const root = process.cwd();
 const ignored = new Set([
@@ -24,10 +24,14 @@ function walk(dir) {
 }
 let files;
 try {
-  files = execFileSync("git", ["ls-files", "-z"], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-  })
+  files = execFileSync(
+    "git",
+    ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+    {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    },
+  )
     .split("\0")
     .filter(Boolean);
   if (!files.length) files = walk(root);
@@ -49,6 +53,7 @@ for (const file of files) {
     continue;
   }
   const path = join(root, file);
+  if (!existsSync(path)) continue; // A tracked file may be removed by a refactor.
   if (statSync(path).size > 3_000_000) {
     errors.push(`${file}: unexpected large release file`);
     continue;

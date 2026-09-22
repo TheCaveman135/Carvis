@@ -195,6 +195,7 @@ export class Registry {
   }
   async tools(options = {}) {
     const result = [];
+    const names = new Set();
     for (const [id, m] of this.modules) {
       options.signal?.throwIfAborted();
       if (!this.available(id)) continue;
@@ -204,9 +205,10 @@ export class Registry {
       for (const tool of provided) {
         if (
           !/^[a-zA-Z][\w-]{0,63}$/.test(tool.name) ||
-          result.some((t) => t.name === tool.name)
+          names.has(tool.name)
         )
           throw Error("Invalid integration tool name.");
+        names.add(tool.name);
         result.push({ ...tool, integrationId: id });
       }
     }
@@ -215,7 +217,6 @@ export class Registry {
   async sanitize(value, options = {}) {
     for (const [id, m] of this.modules) {
       options.signal?.throwIfAborted();
-      const entry = this.store.config.integrations[id];
       if (!m.sanitize) continue;
       const ctx = this.available(id)
         ? this.contextFor(id, options)
