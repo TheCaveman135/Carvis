@@ -1294,7 +1294,7 @@ export class AutomationEngine {
       const dot = rest.lastIndexOf('.');
       const id = dot === -1 ? rest : rest.slice(0, dot);
       const field = dot === -1 ? 'exists' : rest.slice(dot + 1);
-      const item = this.memory?.all?.().find((memory) => memory.id === id);
+      const item = this.memory?.all?.().find((memory) => memory.id === id || memory.dmr?.legacyId === id);
       if (field === 'exists') return Boolean(item);
       return item?.[field];
     }

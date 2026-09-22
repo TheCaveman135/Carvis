@@ -101,7 +101,7 @@ const sessions = new Sessions({ getConfig: loadConfig, bus, worldState, atlas })
 // at registration below.
 const legacyMemory = new MemoryStore(loadConfig);
 legacyMemory.start();
-const memory = new ContinuityMemory({directory:path.join(ROOT,'continuity-memory'),legacy:{all:()=>[...legacyMemory.all(),...(cfg.continuityImport || [])],state:()=>legacyMemory.state()}});
+const memory = new ContinuityMemory({directory:path.join(ROOT,'continuity-memory'),getConfig:loadConfig,legacy:{all:()=>[...legacyMemory.all(),...(cfg.continuityImport || [])],state:()=>legacyMemory.state()}});
 
 /**
  * House rules used to be one opaque newline-joined string at

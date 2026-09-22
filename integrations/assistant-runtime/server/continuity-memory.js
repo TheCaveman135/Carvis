@@ -5,10 +5,10 @@ import {DMRStore} from '../../continuity-memory/src/dmr-store.js';
 import {CarvisDmrAdapter} from '../../continuity-memory/src/carvis-adapter.js';
 import {PatternLearner} from './patterns.js';
 export class ContinuityMemory extends CarvisDmrAdapter {
- constructor({directory,legacy}){
+ constructor({directory,legacy,getConfig=()=>({})}){
   fs.mkdirSync(directory,{recursive:true,mode:0o700});
   super({dmr:new DMRStore({dbPath:path.join(directory,'continuity.db')}),mode:'dmr'});
-  this.directory=directory;
+  this.directory=directory;this.getConfig=getConfig;
   const marker=path.join(directory,'legacy-imported.json');
   if(!fs.existsSync(marker)){
    if(legacy.state?.().available===false)throw Error('Existing memories could not be read; migration was not completed.');
@@ -22,7 +22,7 @@ export class ContinuityMemory extends CarvisDmrAdapter {
   this.timer=setInterval(()=>{try{this.dmr.consolidate();}catch(error){this.error=error.message;}},15*60*1000);this.timer.unref();
  }
  promptSections(probe=''){
-  try{return this.dmr.assembleContext({query:probe,patternFilter:this.patternFilter});}
+  try{return this.dmr.assembleContext({query:probe,patternFilter:this.patternFilter,factLimit:Math.max(1,Math.min(100,Number(this.getConfig().memory?.maxFactsPerTurn)||8))});}
   catch(error){this.error=error.message;return {rules:'',preferences:'',facts:'',usedIds:[]};}
  }
  all(){return this.dmr.all({includeHistory:true});}

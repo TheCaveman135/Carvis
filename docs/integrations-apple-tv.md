@@ -2,7 +2,7 @@
 
 This integration connects Carvis to an **existing TV AI Controller Home Assistant add-on**. It is an adapter, not the visual controller itself. The controller add-on must implement the API below and already have its own capture/remote/model configuration. No personal TV configuration is shipped with Carvis.
 
-1. Enable and configure Home Assistant in Carvis.
+1. Complete Carvis home setup. The shared connection is managed in **Settings → Home Assistant**.
 2. Select the TV media-player in Home Assistant. Control requires the controllable list; status only requires observation. A remote can be the selected target when no media-player is configured.
 3. Enable TV AI Controller. Enter the actual entity IDs and add-on slug. The slug defaults to `local_apple_tv_ai`.
 4. Under **Context**, optionally enter streaming-app or subtitle preferences. Under **Reply behavior**, choose **Silent successful navigation** and **Short power and playback replies**, which save automatically. Both switches default to on.

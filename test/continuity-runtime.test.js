@@ -24,3 +24,13 @@ test('Continuity patterns preserve successful-owner-action and entity access fil
  for(let i=0;i<4;i++)memory.dmr.observeAction({action:{tool:'ha.light.set',target:'light.desk',verb:'on',arguments:{state:'on'}},timestamp:Date.UTC(2026,8,1+i,18)});
  assert.equal(patterns.list().length,1);assert.equal(memory.promptSections('desk').trace.patterns.length,1);config.entities.controlled=[];assert.equal(patterns.list().length,0);assert.equal(memory.promptSections('desk').trace.patterns.length,0);
 });
+
+
+test('Continuity applies the configured recall limit without evicting stored memories',t=>{
+ const directory=mkdtempSync(join(tmpdir(),'continuity-'));t.after(()=>rmSync(directory,{recursive:true,force:true}));
+ const memory=new ContinuityMemory({directory,legacy:{all:()=>[]},getConfig:()=>({memory:{maxFactsPerTurn:1}})});t.after(()=>memory.close());
+ memory.remember({text:'The blue printer lives in the garage.',source:'owner',kind:'fact'});
+ memory.remember({text:'The green printer uses resin.',source:'owner',kind:'fact'});
+ assert.equal(memory.promptSections('printer').trace.retrieval.length,1);
+ assert.equal(memory.all().length,2);
+});

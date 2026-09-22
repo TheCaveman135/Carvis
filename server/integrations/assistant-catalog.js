@@ -32,6 +32,7 @@ const DESCRIPTIONS = {
   'physical-carvis': 'Connect a physical Carvis device, such as an ESP32-S3 unit, for device status, commands, and audio. Only needed if you have the hardware.',
 };
 const FIELD_HELP = {
+  memory__maxFactsPerTurn: ['Relevant memories per request', 'Limits the facts recalled for each request. Historical records remain stored; owner rules are always respected.'],
   voice__inputDevice: ['Microphone source', 'Choose a microphone on the Carvis server, or enabled Even glasses. Local listening continues with the webpage closed.'],
   voice__inputMuted: ['Mute microphone', 'Stops local capture and rejects new audio from the selected source while muted.'],
   speech__localDevice: ['Local speaker', 'A speaker connected to the machine running Carvis. Uses the installed macOS voice.'],

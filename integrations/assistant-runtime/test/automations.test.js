@@ -33,7 +33,7 @@ function stateEquals(entityId, value) {
   };
 }
 
-function makeHarness({ now = 1_800_000_000_000, onWake, tools, gatewayCall, isHaReady, isAtlasReady, atlas } = {}) {
+function makeHarness({ now = 1_800_000_000_000, onWake, tools, gatewayCall, isHaReady, isAtlasReady, atlas, memory } = {}) {
   let clock = now;
   const store = makeStore(() => clock);
   const bus = makeBus(store, () => clock);
@@ -52,7 +52,7 @@ function makeHarness({ now = 1_800_000_000_000, onWake, tools, gatewayCall, isHa
     gateway,
     ha,
     atlas: atlas || { status: 'ok', snapshot: { projects: [], tasks: [], fetchedAt: now } },
-    memory: { state: () => ({ total: 0, facts: 0, preferences: 0 }) },
+    memory: memory || { state: () => ({ total: 0, facts: 0, preferences: 0 }) },
     hud: {},
     feed: {
       push(type, text, meta) {
@@ -1413,3 +1413,12 @@ function makeHa() {
 function haState(entityId, state, now, attributes = {}) {
   return { entity_id: entityId, state, attributes, last_changed: new Date(now).toISOString() };
 }
+
+
+test('routine memory references survive migration to Continuity IDs and respect deletion',()=>{
+ let items=[{id:'new_memory_id',text:'Useful context',dmr:{legacyId:'old_memory_id'}}];
+ const engine=makeHarness({memory:{all:()=>items}}).engine();
+ assert.equal(engine.resolve('memory.item.old_memory_id.text'),'Useful context');
+ assert.equal(engine.resolve('memory.item.old_memory_id.exists'),true);
+ items=[];assert.equal(engine.resolve('memory.item.old_memory_id.exists'),false);
+});
