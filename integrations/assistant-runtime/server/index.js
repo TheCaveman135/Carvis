@@ -1,6 +1,7 @@
 import {ContinuityMemory,ContinuityPatterns} from './continuity-memory.js';
 import {voiceReply} from './voice-events.js';
-import { HostMicrophone, speakLocal, stopLocalPlayback } from './host-audio.js';
+import {VoiceControls} from './voice-controls.js';
+import { HostMicrophone, speakLocal, stopLocalPlayback, listHostAudio } from './host-audio.js';
 import {IntegrationBridge} from './integration-bridge.js';
 import {enabled, effectiveConfig, toolFeature, routeFeature, paused} from './features.js';
 import {visibleModelInput} from './entity-visibility.js';
@@ -387,14 +388,15 @@ async function serveStatic(req, res, urlPath) {
   }
 }
 
-hostMicrophone = new HostMicrophone({onAudio:async pcm=>{
+hostMicrophone = new HostMicrophone({onAudio:async (pcm,{isCurrent})=>{
   const config=loadConfig();
   if(!enabled(config,'voice')||!config.voice.enabled||!config.stt.enabled||config.voice.inputMuted)return;
   const heard=await stt.transcribe(pcm);
-  if(heard.text&&!loadConfig().voice.inputMuted)await voice.ingest(heard.text,{source:'server-microphone',confidence:heard.confidence});
+  if(heard.text&&isCurrent()&&!loadConfig().voice.inputMuted)await voice.ingest(heard.text,{source:'server-microphone',confidence:heard.confidence});
 }});
-const hostAudioConfig=loadConfig();
-if(enabled(hostAudioConfig,'voice')&&hostAudioConfig.voice.enabled&&hostAudioConfig.stt.enabled&&!hostAudioConfig.voice.inputMuted&&hostAudioConfig.voice.inputDevice?.startsWith('local:'))void hostMicrophone.start(hostAudioConfig.voice.inputDevice.slice(6));
+const voiceControls=new VoiceControls({microphone:hostMicrophone,getConfig:rawConfig,saveConfig,listDevices:listHostAudio,transcriber:stt,voice});
+voiceControls.sync();
+process.on('carvis:config-changed',()=>voiceControls.sync());
 
 const hudInteractions = new HudInteractions({hud,ha,getConfig:loadConfig,gateway,voice});
 
@@ -597,7 +599,7 @@ const routes = {
     if (!isAuthorisedRequest(req, loadConfig())) return sendJson(res, 401, { ok: false, message: 'unauthorised' });
     const config = loadConfig();
     const audioSource=new URL(req.url,'http://localhost').searchParams.get('source')==='browser'?'browser':'even-glasses';
-    if(config.voice.inputDevice && (config.voice.inputMuted || config.voice.inputDevice!==audioSource))return sendJson(res,200,{ok:true,outcome:'ignored',reason:config.voice.inputMuted?'microphone muted':'another microphone is selected'});
+    if(config.voice.inputMuted || (config.voice.inputDevice && config.voice.inputDevice!==audioSource))return sendJson(res,200,{ok:true,outcome:'ignored',reason:config.voice.inputMuted?'microphone muted':'another microphone is selected'});
     if (!config.stt.enabled) return sendJson(res, 200, { ok: false, message: 'speech to text is switched off' });
 
     let pcm;
@@ -619,6 +621,8 @@ const routes = {
       log('error', `Transcription failed: ${err.message}`);
       return sendJson(res, 200, { ok: false, message: err.message });
     }
+    const latest=loadConfig().voice;
+    if(latest.inputMuted || (latest.inputDevice && latest.inputDevice!==audioSource))return sendJson(res,200,{ok:true,outcome:'ignored',reason:'Microphone muted or changed during transcription'});
     const text = heard.text;
     if (!text) return sendJson(res, 200, { ok: true, outcome: 'ignored', reason: 'nothing said', text: '' });
 
@@ -634,7 +638,8 @@ const routes = {
     });
   },
 
-  'GET /api/voice/microphone': async (_req,res) => sendJson(res,200,hostMicrophone.state()),
+  'GET /api/voice/microphone': async (_req,res) => sendJson(res,200,voiceControls.state()),
+  'POST /api/voice/microphone': async (req,res) => {try{sendJson(res,200,await voiceControls.update(await readBody(req)));}catch(error){sendJson(res,400,{ok:false,message:error.message});}},
   'GET /api/stt': async (req, res) => sendJson(res, 200, stt.state()),
 
   // ── Carvis ───────────────────────────────────────────────────────

@@ -17,7 +17,7 @@ test('muting during native helper startup prevents capture',async()=>{
 test('mute terminates capture and drops audio from the previous session',async()=>{
  const child=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();let killed=false,calls=0;child.kill=()=>{killed=true;};
  const mic=new HostMicrophone({onAudio:()=>calls++,helper:async()=>'/fixture',list:async()=>[{uid:'test',input:true}],spawnImpl:()=>child});
- await mic.start('test');assert.equal(mic.state().listening,true);mic.stop();
+ await mic.start('test');assert.equal(mic.state().capturing,true);assert.equal(mic.state().listening,false);mic.stop();
  child.stdout.emit('data',Buffer.concat([...Array(30)].map(()=>frame(1500)).concat([...Array(40)].map(()=>frame()))));
  assert(killed);assert.equal(calls,0);assert.equal(mic.state().listening,false);
 });
@@ -28,4 +28,27 @@ test('local spoken replies use the selected speaker without HA or physical hardw
  const output=new VoiceOutput({getConfig:()=>({speech:{autoReplies:true,outputMode:'local_only',localDevice:'speaker-uid'}}),localSpeaker:async(text,uid)=>{calls.push({text,uid});return {success:true,target:'local_speaker',streamFinished:true};}});
  const result=await output.speakReply({kind:'reply',text:'Ready.'});
  assert.equal(result.success,true);assert.deepEqual(calls,[{text:'Ready.',uid:'speaker-uid'}]);
+});
+
+function microphoneFixture(t){
+ let clock=1000;const children=[];
+ const mic=new HostMicrophone({now:()=>clock,onAudio:()=>{},helper:async()=>'/fixture',list:async()=>[{uid:'test',input:true}],spawnImpl:()=>{
+  const child=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.kill=()=>{child.killed=true;};children.push(child);return child;
+ }});t.after(()=>mic.stop());return {mic,children,setClock:value=>{clock=value;}};
+}
+test('capture reports listening only when PCM arrives and exposes a level without retaining audio',async t=>{
+ const {mic,children}=microphoneFixture(t);await mic.start('test');assert.equal(mic.state().listening,false);
+ children[0].stdout.emit('data',frame(1500));assert.equal(mic.state().listening,true);assert(mic.state().level>0);assert.equal(mic.state().bytesReceived,640);
+ mic.stop();assert.equal(mic.state().level,0);
+});
+test('a stalled microphone is reopened and mute cancels its pending reconnect',async t=>{
+ const {mic,children,setClock}=microphoneFixture(t);await mic.start('test');setClock(12000);mic.checkHealth();
+ assert(children[0].killed);assert.equal(mic.state().listening,false);assert.equal(mic.state().reconnecting,true);assert.match(mic.state().error,/not sending audio/);
+ mic.stop();assert.equal(mic.desired,'');assert.equal(mic.state().reconnecting,false);
+});
+test('changing microphones invalidates already queued transcription work',async t=>{
+ const {mic,children}=microphoneFixture(t);let current;
+ mic.onAudio=async (_audio,guard)=>{current=guard.isCurrent;};await mic.start('test');
+ children[0].stdout.emit('data',Buffer.concat([...Array(30)].map(()=>frame(1500)).concat([...Array(40)].map(()=>frame()))));
+ await new Promise(resolve=>setImmediate(resolve));assert(current());mic.stop();assert.equal(current(),false);
 });

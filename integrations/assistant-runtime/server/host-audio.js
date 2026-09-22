@@ -36,20 +36,57 @@ export class PcmSentences {
  }
 }
 export class HostMicrophone {
- constructor({onAudio,list=listHostAudio,helper=audioHelper,spawnImpl=spawn}){this.onAudio=onAudio;this.list=list;this.helper=helper;this.spawn=spawnImpl;this.process=null;this.error='';this.generation=0;this.busy=false;this.speakingOutput=false;this.detector=new PcmSentences();this.active='';}
- async start(uid){
-  this.stop();const generation=this.generation;this.error='';
-  try{const binary=await this.helper();if(generation!==this.generation)return;
-   if(!(await this.list()).some(d=>d.uid===uid&&d.input))throw Error('Selected microphone is disconnected.');if(generation!==this.generation)return;
-   const child=this.spawn(binary,['capture',uid],{stdio:['ignore','pipe','pipe']});this.process=child;this.active=uid;let remainder=Buffer.alloc(0),stderr='';
-   child.stderr.on('data',c=>{stderr=(stderr+c).slice(-1500);});
-   child.stdout.on('data',chunk=>{if(generation!==this.generation)return;remainder=Buffer.concat([remainder,chunk]);while(remainder.length>=640){const frame=remainder.subarray(0,640);remainder=remainder.subarray(640);if(this.busy||this.speakingOutput){this.detector.reset();continue;}const audio=this.detector.push(frame);if(audio){this.busy=true;Promise.resolve(this.onAudio(audio)).catch(e=>{this.error=e.message;}).finally(()=>{this.busy=false;});}}});
-   child.on('error',e=>{if(generation===this.generation)this.error=e.message;});
-   child.on('exit',()=>{if(generation!==this.generation)return;this.process=null;this.active='';this.error=stderr.trim()||'Microphone stopped. Check its connection and unmute again.';});
-  }catch(error){if(generation===this.generation)this.error=error.message;}
+ constructor({onAudio,list=listHostAudio,helper=audioHelper,spawnImpl=spawn,now=Date.now}){
+  Object.assign(this,{onAudio,list,helper,spawn:spawnImpl,now});
+  this.process=null;this.error='';this.generation=0;this.busy=false;this.speakingOutput=false;
+  this.detector=new PcmSentences();this.active='';this.desired='';this.lastAudioAt=0;this.level=0;this.bytes=0;this.retries=0;
  }
- stop(){this.generation++;this.process?.kill('SIGTERM');this.process=null;this.active='';this.detector.reset();}
- state(){return {listening:Boolean(this.process),device:this.active,error:this.error};}
+ async start(uid,{retry=false}={}){
+  this.stop();const generation=this.generation;this.desired=uid;this.error='';this.startedAt=this.now();
+  if(!retry)this.retries=0;
+  try{
+   const binary=await this.helper();if(generation!==this.generation)return;
+   if(!(await this.list()).some(d=>d.uid===uid&&d.input))throw Error('Selected microphone is disconnected.');if(generation!==this.generation)return;
+   const child=this.spawn(binary,['capture',uid],{stdio:['ignore','pipe','pipe']});this.process=child;this.active=uid;this.startedAt=this.now();let remainder=Buffer.alloc(0),stderr='';
+   this.watchdog=setInterval(()=>this.checkHealth(),1000);this.watchdog.unref?.();
+   child.stderr.on('data',c=>{stderr=(stderr+c).slice(-1500);});
+   child.stdout.on('data',chunk=>{
+    if(generation!==this.generation)return;
+    if(!this.lastAudioAt)this.error='';this.lastAudioAt=this.now();this.bytes+=chunk.length;this.retries=0;
+    remainder=Buffer.concat([remainder,chunk]);
+    while(remainder.length>=640){
+     const frame=remainder.subarray(0,640);remainder=remainder.subarray(640);
+     let sum=0;for(let i=0;i<frame.length;i+=2)sum+=frame.readInt16LE(i)**2;
+     this.level=Math.min(100,Math.round(Math.sqrt(sum/320)/32768*500));
+     if(this.busy||this.speakingOutput){this.detector.reset();continue;}
+     const audio=this.detector.push(frame);
+     if(audio){
+      this.busy=true;
+      Promise.resolve().then(()=>generation===this.generation?this.onAudio(audio,{isCurrent:()=>generation===this.generation}):null)
+       .then(()=>{if(generation===this.generation)this.error='';})
+       .catch(e=>{if(generation===this.generation)this.error=e.message;})
+       .finally(()=>{if(generation===this.generation)this.busy=false;});
+     }
+    }
+   });
+   child.on('error',e=>{if(generation===this.generation)this.retry(e.message);});
+   child.on('exit',()=>{if(generation===this.generation)this.retry(stderr.trim()||'Microphone stopped. Reconnecting to the selected device.');});
+  }catch(error){if(generation===this.generation)this.retry(error.message);}
+ }
+ checkHealth(){
+  if(this.process&&this.now()-(this.lastAudioAt||this.startedAt)>10000)this.retry('The selected microphone is not sending audio. Check its connection or choose another microphone.');
+ }
+ retry(message){
+  const uid=this.desired;if(!uid)return;
+  this.stop();this.desired=uid;this.error=message;this.retries++;
+  this.retryAt=this.now()+Math.min(30000,this.retries*3000);
+  this.retryTimer=setTimeout(()=>{if(this.desired===uid)void this.start(uid,{retry:true});},Math.min(30000,this.retries*3000));this.retryTimer.unref?.();
+ }
+ stop(){
+  this.generation++;clearInterval(this.watchdog);clearTimeout(this.retryTimer);this.retryAt=0;this.desired='';
+  this.process?.kill('SIGTERM');this.process=null;this.active='';this.busy=false;this.lastAudioAt=0;this.bytes=0;this.level=0;this.error='';this.detector.reset();
+ }
+ state(){return {listening:Boolean(this.process&&this.lastAudioAt&&this.now()-this.lastAudioAt<3000),capturing:Boolean(this.process),device:this.active||this.desired,error:this.error,level:this.now()-this.lastAudioAt<1000?this.level:0,lastAudioAt:this.lastAudioAt,bytesReceived:this.bytes,processing:this.busy,speaking:this.speakingOutput,reconnecting:Boolean(this.retryAt),retryAt:this.retryAt};}
 }
 export async function speakLocal(text,uid,{onStart=()=>{},onEnd=()=>{}}={}){
  const device=(await listHostAudio()).find(d=>d.uid===uid&&d.output);if(!device)return {success:false,error:'Selected local speaker is unavailable'};

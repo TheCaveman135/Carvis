@@ -1,6 +1,7 @@
 "use strict";
 import { modelRouterEntries } from "./model-router.js";
 import { entityStateDisplay } from "./entity-state.js";
+import { mountVoiceControls } from "./voice-controls.js";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const app = $("#app");
@@ -2207,9 +2208,10 @@ function renderSettings(main) {
 boot();
 
 function renderVoiceConversations(main){
+  const voiceControls=mountVoiceControls({el,button,api});
   const list=el('div',{class:'voice-history-list'}),messages=el('div',{class:'voice-history-messages','aria-live':'polite'});
   let selected=null,disposed=false,busy=false,last='';
-  main.append(el('section',{class:'voice-history-page'},el('h1',{},'Voice Conversations'),el('p',{class:'muted'},'Your spoken requests and Carvis’s replies. Updates automatically; a new conversation starts after 10 minutes of quiet.'),el('div',{class:'voice-history'},list,messages)));
+  main.append(el('section',{class:'voice-history-page'},el('h1',{},'Voice Conversations'),el('p',{class:'muted'},'Your spoken requests and Carvis’s replies. Updates automatically; a new conversation starts after 10 minutes of quiet.'),voiceControls.root,el('div',{class:'voice-history'},list,messages)));
   const render=async()=>{
     if(disposed||busy)return;busy=true;
     try{
@@ -2219,7 +2221,7 @@ function renderVoiceConversations(main){
       const signature=JSON.stringify([selected,conversations]);if(signature===last)return;last=signature;
       list.replaceChildren(...conversations.map(c=>button(c.title,()=>{selected=c.id;last='';void render();},c.id===selected?'primary':'quiet')));
       const current=conversations.find(c=>c.id===selected);
-      if(!current){messages.replaceChildren(el('p',{class:'muted'},'No voice conversations yet. Choose a microphone and unmute it in Voice input & chat.'));return;}
+      if(!current){messages.replaceChildren(el('p',{class:'muted'},'No voice conversations yet. Choose a microphone above and unmute it to start.'));return;}
       const nearBottom=messages.scrollHeight-messages.scrollTop-messages.clientHeight<100;
       messages.replaceChildren(el('div',{class:'voice-history-header'},el('h2',{},current.title),button('Delete',async()=>{if(!confirm('Delete this voice conversation?'))return;await api(`/api/conversations/${encodeURIComponent(current.id)}`,{method:'DELETE'});last='';await render();},'quiet')),
         ...current.messages.map(m=>el('article',{class:`voice-history-message ${m.role}`},el('strong',{},m.role==='user'?'You':'Carvis'),el('small',{class:'muted'},new Date(m.createdAt).toLocaleTimeString()),el('p',{style:'white-space:pre-wrap'},m.content),m.voiceStatus?el('small',{class:'muted'},m.voiceStatus):null)));
@@ -2228,7 +2230,7 @@ function renderVoiceConversations(main){
     finally{busy=false;}
   };
   void render();const timer=setInterval(()=>void render(),2000);
-  state.integrationCleanup=()=>{disposed=true;clearInterval(timer);};
+  state.integrationCleanup=()=>{disposed=true;clearInterval(timer);voiceControls.dispose();};
 }
 
 function renderHomeSettings(main,onboarding=false){

@@ -2032,3 +2032,5 @@ dialog::backdrop {
 .home-device-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;margin-top:24px}.home-device-grid .control-card{margin:0}
 
 .recall-preview{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}
+
+.voice-input-controls{margin:20px 0}.voice-input-toolbar{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}.voice-input-toolbar label{display:grid;gap:6px;flex:1;min-width:220px}.voice-input-toolbar select{width:100%}.voice-input-level{display:flex;align-items:center;gap:12px;margin-top:14px}.voice-input-level meter{width:110px;flex-shrink:0}.voice-input-level p{margin:0}.voice-input-controls .notice{margin-top:12px}
