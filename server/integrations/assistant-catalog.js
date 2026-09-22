@@ -1,7 +1,7 @@
 /** Setup guidance is Integration metadata, not chatbot behavior or permissions. */
 export const CATALOG = {
   'home-assistant': ['required', 'Connects your own Home Assistant server. Choose exactly which devices Carvis can see and control.', 'Home Assistant', ['Enter your Home Assistant URL and long-lived access token.', 'Devices appear automatically after connecting. Choose what Carvis may see and control.']],
-  'apple-tv': ['required', 'Apple TV AI sends every TV command through your Home Assistant controller.', 'Apple TV AI', ['Connect Home Assistant and select your TV for control.', 'Enter the Apple TV AI add-on and TV connection details.', 'Choose whether navigation is silent and playback replies are brief.']],
+  'apple-tv': ['required', 'TV AI Controller sends every TV command through your Home Assistant controller.', 'TV AI Controller', ['Connect Home Assistant and allow your remote or TV for control.', 'Configure a camera feed and remote in the controller, then choose your devices here.', 'Choose whether navigation is silent and playback replies are brief.']],
   proactivity: ['required', 'Uses Home Assistant events to notice changes around your home.', 'Proactive home alerts', ['Connect Home Assistant and select the devices to observe.', 'Choose when Carvis may interrupt you and how often.']],
   cameras: ['recommended', 'Home Assistant is needed for live camera feeds. Uploaded images can be inspected without it.', 'Cameras & Images', ['Choose a vision model and enable Advanced assistant.', 'For live cameras, connect Home Assistant and select cameras for observation.', 'Add room notes or upload an image, then give Carvis a specific question.']],
   protocols: ['recommended', 'Timers and reminders work alone. Device actions and home-event triggers need Home Assistant.', 'Routines, timers & alarms', ['Enable Advanced assistant.', 'Create a timer, alarm, or describe a routine to Carvis.', 'Connect Home Assistant for routines that use your devices.']],
@@ -17,7 +17,7 @@ export const CATALOG = {
 };
 const DESCRIPTIONS = {
   'home-assistant': 'Connect your smart home so Carvis can check devices and control the ones you allow. Requires your own Home Assistant server.',
-  'apple-tv': 'Ask Carvis to find a movie, open an app, or navigate your TV. Requires Home Assistant and a separate Apple TV AI controller.',
+  'apple-tv': 'Ask Carvis to find a movie, open an app, or navigate your TV. Works with a camera feed and a compatible Home Assistant remote configured in the TV AI controller.',
   proactivity: 'Let Carvis notice changes in your home and offer relevant updates without waiting for you to ask. Choose when it may interrupt.',
   cameras: 'Ask questions about uploaded pictures or selected camera feeds—for example, what is in a room. Add room notes to help Carvis understand what it sees.',
   protocols: 'Set timers and alarms, or create repeatable routines. Connect Home Assistant for routines triggered by your devices or that control your home.',

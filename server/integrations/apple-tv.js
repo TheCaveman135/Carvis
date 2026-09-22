@@ -84,7 +84,7 @@ export async function connectIngress(ctx, config, ha) {
       }
     };
     socket.addEventListener("error", () =>
-      finish(Error("Could not connect to Home Assistant for Apple TV AI.")),
+      finish(Error("Could not connect to Home Assistant for TV AI Controller.")),
     );
     socket.addEventListener("close", () => {
       if (!settled)
@@ -122,7 +122,7 @@ export async function connectIngress(ctx, config, ha) {
           !/^\/api\/hassio_ingress\/[^/]+\/$/.test(info?.ingress_url || "")
         )
           return finish(
-            Error("Start the Apple TV AI add-on in Home Assistant."),
+            Error("Start the TV AI Controller add-on in Home Assistant."),
           );
         ingressPath = info.ingress_url.replace(/\/$/, "");
         return send({
@@ -172,7 +172,7 @@ async function request(ctx, path, body) {
     });
   } catch {
     throw Error(
-      "Apple TV AI connection failed. Delivery is uncertain; check task status before retrying.",
+      "TV AI Controller connection failed. Delivery is uncertain; check task status before retrying.",
     );
   }
   if ([401, 403, 404, 502, 503].includes(response.status)) sessions.delete(key);
@@ -182,13 +182,13 @@ async function request(ctx, path, body) {
     );
   if (!response.ok)
     throw Error(
-      `Apple TV AI rejected this request (${response.status}). No direct remote fallback was used.`,
+      `TV AI Controller rejected this request (${response.status}). No direct remote fallback was used.`,
     );
   try {
     return await response.json();
   } catch {
     throw Error(
-      "Apple TV AI returned an unreadable result. Check status before retrying.",
+      "TV AI Controller returned an unreadable result. Check status before retrying.",
     );
   }
 }
@@ -221,20 +221,20 @@ async function authorize(
 }
 function confirmation(a, summary, opts = {}) {
   if (!liveOwner(opts))
-    throw Error("Apple TV AI actions require a live owner request.");
+    throw Error("TV AI Controller actions require a live owner request.");
   if (a.protected && !opts.confirmed && !a.ha.config.dryRun)
     return { requiresConfirmation: true, summary };
   if (a.ha.config.dryRun)
     return {
       success: true,
       dryRun: true,
-      message: "Dry run: no command was sent to Apple TV AI.",
+      message: "Dry run: no command was sent to TV AI Controller.",
     };
   return null;
 }
 function runResult(run) {
   if (!run || typeof run !== "object")
-    throw Error("Apple TV AI returned no task.");
+    throw Error("TV AI Controller returned no task.");
   return Object.fromEntries(
     [
       "id",
@@ -272,7 +272,7 @@ function taskId(id) {
 }
 export default {
   id: "apple-tv",
-  name: "Apple TV AI",
+  name: "TV AI Controller",
   version: "1.0.0",
   icon: "tv",
   description:
@@ -288,21 +288,21 @@ export default {
       label: "Home Assistant add-on slug",
       type: "text",
       description:
-        "Defaults to local_apple_tv_ai. Requires an installed, running Apple TV AI add-on.",
+        "Defaults to local_apple_tv_ai. Requires an installed, running TV AI Controller add-on.",
     },
     {
       key: "remoteEntity",
-      label: "Apple TV remote entity",
+      label: "TV remote",
       type: "text",
       description:
-        "Remote ID configured in the AI controller. Permission for navigation can come from your selected TV media-player entity; the remote need not be exposed to Carvis.",
+        "Choose the Home Assistant remote configured alongside the camera feed in your controller. Button support depends on that remote.",
     },
     {
       key: "mediaPlayerEntity",
-      label: "Apple TV media-player entity",
+      label: "TV media player (optional)",
       type: "text",
       description:
-        "Your actual media_player entity ID. At least one TV entity is required.",
+        "Optional media player for playback and power. Any brand is supported when configured in your controller.",
     },
     {
       key: "context",
@@ -320,7 +320,7 @@ export default {
     await request(ctx, "/api/status");
     return {
       success: true,
-      message: "Connected to Apple TV AI through Home Assistant ingress.",
+      message: "Connected to TV AI Controller through Home Assistant ingress.",
     };
   },
   async tools(ctx) {
@@ -328,7 +328,7 @@ export default {
       {
         name: "tv_start",
         description:
-          "Start a visual task in the Apple TV AI controller. This is asynchronous; use tv_status for progress. Never claim completion merely because a task started.",
+          "Start a visual task in the TV AI Controller. This is asynchronous; use tv_status for progress. Never claim completion merely because a task started.",
         parameters: schema({ goal: string }, ["goal"]),
         async confirmation(args) {
           const a = await authorize(ctx);
@@ -504,12 +504,12 @@ export default {
     try {
       selected = home(ctx).config.observed;
     } catch {
-      return "Apple TV AI requires the enabled Home Assistant integration before it can be used.";
+      return "TV AI Controller requires the enabled Home Assistant integration before it can be used.";
     }
     const targets = [cfg.mediaPlayerEntity, cfg.remoteEntity].filter((id) =>
       selected.includes(id),
     );
-    return `Apple TV control uses the AI controller exclusively, with no direct remote fallback. Configured TV targets: ${targets.join(", ") || "none selected"}. Use tv_context to steer a running task instead of restarting it. ${cfg.silentNavigation ? 'Successful navigation should stay silent.' : 'Briefly acknowledge navigation.'} ${cfg.shortReplies ? 'Keep power/playback replies to one short sentence.' : 'Use the normal conversational reply style for power/playback.'}`;
+    return `TV control uses the AI controller exclusively, with no direct remote fallback. Configured TV targets: ${targets.join(", ") || "none selected"}. Use tv_context to steer a running task instead of restarting it. ${cfg.silentNavigation ? 'Successful navigation should stay silent.' : 'Briefly acknowledge navigation.'} ${cfg.shortReplies ? 'Keep power/playback replies to one short sentence.' : 'Use the normal conversational reply style for power/playback.'}`;
   },
   async route({ method, path }, ctx) {
     if (method === "GET" && path === "/status") {

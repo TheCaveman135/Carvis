@@ -91,7 +91,7 @@ export async function mount(ui) {
   async function tv() {
     let run, polling=false;
     try{run=await get('/api/tv/status');}catch(error){content.append(card('TV controller',error.message));return;}
-    const image=el('img',{class:'tv-frame',alt:'Current Apple TV screen',src:base+'/api/tv/frame?t='+Date.now()});
+    const image=el('img',{class:'tv-frame',alt:'Current TV screen',src:base+'/api/tv/frame?t='+Date.now()});
     const refresh=action('Refresh screen',async()=>{image.hidden=false;image.src=base+'/api/tv/frame?t='+Date.now();});
     image.addEventListener('error',()=>{image.hidden=true;refresh.textContent='Retry screen preview';});
     const taskGoal=el('p'),taskStatus=el('p',{role:'status'}),taskMessage=el('p');
@@ -102,9 +102,9 @@ export async function mount(ui) {
     const stop=action('Stop task',async()=>{await tool('ha.apple_tv.stop',{id:run.id});await poll();});
     const progress=el('pre');
     const remoteButtons=[['↑','up'],['←','left'],['Select','select'],['→','right'],['↓','down'],['Back','menu'],['Home','top_menu']].map(([label,command])=>{
-      const b=action(label,async()=>result(await post('/api/carvis/request',{text:`Press ${command} on the Apple TV.`})));b.setAttribute('aria-label',`TV ${command}`);return b;
+      const b=action(label,async()=>result(await post('/api/carvis/request',{text:`Press ${command} on the TV.`})));b.setAttribute('aria-label',`TV ${command}`);return b;
     });
-    const playback=['Turn on','Turn off','Play','Pause'].map(label=>action(label,async()=>result(await post('/api/carvis/request',{text:`${label} the Apple TV.`}))));
+    const playback=['Turn on','Turn off','Play','Pause'].map(label=>action(label,async()=>result(await post('/api/carvis/request',{text:`${label} the TV.`}))));
     function update(next){
       run=next.run || next.task || next;const running=run.status==='running';
       taskGoal.textContent=run.goal || 'No task is running.';taskStatus.textContent=`Status: ${words(run.status || 'idle')}`;taskMessage.textContent=run.message || '';
@@ -115,7 +115,7 @@ export async function mount(ui) {
     async function poll(){if(polling || signal.aborted)return;polling=true;try{const next=await get('/api/tv/status');if(!signal.aborted)update(next);}catch(error){if(!signal.aborted){taskStatus.textContent='Connection lost. Refresh before sending another command.';for(const control of [...remoteButtons,...playback,...start.querySelectorAll('button'),...guidance.querySelectorAll('button'),stop]){control.dataset.locked='true';control.disabled=true;}}}finally{polling=false;}}
     update(run);
     content.append(el('div',{class:'control-two-column'},card('TV screen','Refresh the preview to see the current screen.',image,refresh),card('Current task','Progress refreshes automatically without clearing what you are typing.',taskGoal,taskStatus,taskMessage,stop,start,guidance,el('details',{class:'control-details'},el('summary',{},'Task progress'),progress))));
-    content.append(card('Remote','Every button goes through Apple TV AI in Home Assistant.',el('div',{class:'tv-remote'},remoteButtons),el('div',{class:'action-row'},playback),el('p',{class:'small muted'},'Change navigation silence and playback replies in Settings → Reply behavior.')));
+    content.append(card('Remote','Every button goes through TV AI Controller in Home Assistant.',el('div',{class:'tv-remote'},remoteButtons),el('div',{class:'action-row'},playback),el('p',{class:'small muted'},'Change navigation silence and playback replies in Settings → Reply behavior.')));
     const timer=setInterval(poll,3000);dispose=()=>clearInterval(timer);
   }
   async function protocols(snapshot) {

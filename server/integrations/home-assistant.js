@@ -441,7 +441,7 @@ async function command(ctx, args, options = {}) {
   if (tvTarget) {
     if (!tvConfig)
       throw Error(
-        "Enable and configure Apple TV AI to control this device. No direct remote fallback is allowed.",
+        "Enable and configure TV AI Controller to control this device. No direct remote fallback is allowed.",
       );
     return ctx.registry.invoke("tv_command", args, options);
   }
@@ -589,7 +589,7 @@ export default {
       {
         name: "ha_command",
         description:
-          "Control a selected Home Assistant entity. Use short service names and exact user-requested values. Protected devices require owner confirmation. Apple TV commands are routed exclusively through Apple TV AI.",
+          "Control a selected Home Assistant entity. Use short service names and exact user-requested values. Protected devices require owner confirmation. Apple TV commands are routed exclusively through TV AI Controller.",
         parameters: commandSchema,
         execute: (args, opts) => command(ctx, args, opts),
         async confirmation(args) {

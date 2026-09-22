@@ -308,7 +308,7 @@ test("Apple TV commands are delegated exclusively and disabled integration canno
   const args = { entity_id: "media_player.television", service: "media_pause" };
   await assert.rejects(
     () => t.execute(args),
-    /Enable and configure Apple TV AI/,
+    /Enable and configure TV AI Controller/,
   );
   let invoked;
   f.ctx.registry = {
