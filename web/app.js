@@ -1,5 +1,6 @@
 "use strict";
 import { modelRouterEntries } from "./model-router.js";
+import { entityStateDisplay } from "./entity-state.js";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const app = $("#app");
@@ -2255,7 +2256,10 @@ function renderHome(main){
   const observed=new Set([...(cfg.observed || []),...(cfg.controlled || [])]);
   const selected=data.entities.filter(e=>observed.has(e.entity_id));
   feedback.textContent=`${selected.length} selected devices · ${cfg.dryRun!==false?'Dry run is on':'Live control enabled'}`;
-  devices.replaceChildren(...selected.map(e=>el('article',{class:'control-card'},el('h3',{},e.name || e.entity_id),el('p',{},`${e.state || 'Unknown'}${e.unit?' '+e.unit:''}`),el('small',{class:'muted'},e.area_name || e.entity_id))));
+  devices.replaceChildren(...selected.map(e=>{
+   const value=entityStateDisplay(e);
+   return el('article',{class:'control-card'},el('h3',{},e.name || e.entity_id),el('p',{title:value.title},value.text),el('small',{class:'muted'},e.area_name || e.entity_id));
+  }));
  }catch(error){if(!stopped)feedback.textContent=errorText(error);}finally{busy=false;}};
  void refresh();const timer=setInterval(()=>void refresh(),15000);state.integrationCleanup=()=>{stopped=true;clearInterval(timer);};
 }
