@@ -3,7 +3,8 @@
   "version": "0.3.3",
   "private": true,
   "type": "module",
-  "description": "A smart home controller built around Home Assistant, expanded through optional integrations.",
+  "description": "A self-hosted smart home AI controller built around Home Assistant, expandable through integrations.",
+  "license": "AGPL-3.0-only",
   "engines": {
     "node": ">=22.18.0"
   },

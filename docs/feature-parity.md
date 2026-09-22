@@ -1,7 +1,7 @@
 # Full installation parity
 
 The public edition must support the complete existing Carvis experience. A
-smaller chatbot with a new interface is not a completed migration. Capabilities
+home controller with a new interface but missing existing capabilities is not a completed migration. Capabilities
 may move into optional Integrations, but moving them must preserve their behavior,
 configuration, state, and permission boundaries.
 
@@ -13,7 +13,7 @@ physical hardware checks are listed separately at the end.
 
 - [x] Preserve conversation context and history, personality, model providers,
   model settings, authentication, and account sessions during migration.
-- [x] Keep a useful standalone chatbot with no enabled Integrations.
+- [x] Keep useful core home control and conversation with no optional Integrations enabled.
 - [x] Provide generic Integration lifecycle, settings, UI, context, tool, and
   reply hooks; service-specific behavior stays inside Integrations.
 - [x] Explain actions, failures, timings, confirmations, and actual outcomes in
@@ -168,10 +168,11 @@ the existing device server API; this release does not introduce ESP32 firmware.
 
 ## Integration center update (0.3.0)
 
-All 14 built-in integrations have Home Assistant requirement labels, setup guidance,
-and native Overview, Controls, Settings, and Activity pages. The former workspace
-entry points redirect into Carvis. Camera feeds require Home Assistant; uploaded
-images do not. Apple TV AI and proactive home updates require Home Assistant.
+The integration center uses one grid with setup guidance and native Overview,
+Controls, Settings, and Activity pages. Home Assistant is configured in Settings
+as a core service. The former workspace entry points redirect into Carvis.
+Camera feeds require Home Assistant; uploaded images do not. TV control and
+proactive home updates use the core Home Assistant connection.
 
 Validation: 428 automated tests pass, including dependency revocation, imported
 connection compatibility, authenticated control assets, and live microphone cleanup.

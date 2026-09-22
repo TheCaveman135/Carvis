@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest a smart home capability or integration
+title: "[Feature] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the use case without sharing your credentials or private home details. New service-specific abilities usually belong in Integrations.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you want Carvis to do?
+      description: Describe the home task and what currently gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Desired behavior
+      description: Include how Carvis should confirm success or handle failure.
+    validations:
+      required: true
+  - type: textarea
+    id: permissions
+    attributes:
+      label: Devices and permissions
+      description: Which device types or external services would this use? Please use generic examples.

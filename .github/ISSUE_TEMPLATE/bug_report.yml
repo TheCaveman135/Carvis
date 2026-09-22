@@ -1,0 +1,51 @@
+name: Bug report
+description: Report a reproducible Carvis problem
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please remove tokens, private URLs, transcripts, entity IDs, and home images. Report security vulnerabilities privately through the repository Security tab.
+  - type: input
+    id: version
+    attributes:
+      label: Carvis version or commit
+      placeholder: Version or commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Home Assistant and devices
+        - Home dashboard and settings
+        - Conversations and models
+        - Voice and speech
+        - Integrations
+        - Glasses or physical device
+        - Installation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Use example or redacted device names.
+      placeholder: "1. Open ...\n2. Select ...\n3. Observe ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include a redacted error or trace if one helps.
+    validations:
+      required: true

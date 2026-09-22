@@ -51,7 +51,7 @@ An empty HUD has no status text. The optional tiny bottom-left dot is controlled
 
 ## Basic companion without Assistant engine
 
-A smaller companion remains available for installations using only the core chatbot and native integrations. It uses `/api/integrations/even-realities/*` instead of the full assistant's voice/HUD routes. Build it separately:
+A smaller companion remains available for installations using core home control without the full assistant runtime. It uses `/api/integrations/even-realities/*` instead of the full assistant's voice/HUD routes. Build it separately:
 
 ```sh
 cd integrations/even-realities

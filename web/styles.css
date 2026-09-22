@@ -346,6 +346,17 @@ button svg,
   border-top: 1px solid var(--line);
   padding: 18px 10px 0;
 }
+.source-link {
+  display: inline-block;
+  margin-bottom: 13px;
+  color: var(--subtle);
+  font-size: 11px;
+  text-decoration: none;
+}
+.source-link:hover,
+.source-link:focus-visible,
+.auth-footer a:hover,
+.auth-footer a:focus-visible { color: var(--accent); text-decoration: underline; }
 .profile-row {
   display: flex;
   align-items: center;
@@ -1142,6 +1153,7 @@ main {
   font-size: 11px;
   color: var(--subtle);
 }
+.auth-footer a { color: inherit; }
 .auth-form-wrap {
   display: flex;
   align-items: center;

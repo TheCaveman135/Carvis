@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/TheCaveman135/Carvis/security/advisories/new
+    about: Report a vulnerability privately. Do not post it in a public issue.
+  - name: Setup and support guide
+    url: https://github.com/TheCaveman135/Carvis/blob/main/SUPPORT.md
+    about: Read the setup guides and learn what details to include in a support request.

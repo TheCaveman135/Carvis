@@ -1,6 +1,6 @@
 # Building a Carvis integration
 
-Integrations are the extension point for capabilities and external knowledge. Keep domain logic out of the chatbot core.
+Integrations are the extension point for optional capabilities and external knowledge. Keep Home Assistant connection, entity permissions, and guarded home control in the core; put other service-specific behavior in integrations.
 
 Create a directory under `CARVIS_INTEGRATIONS_DIR` with `server.js` exporting the module below. Restart Carvis to discover it. It appears in Integrations, disabled until the owner configures and enables it. Files must be ESM (`server.js` can be accompanied by `package.json` with `"type":"module"`).
 

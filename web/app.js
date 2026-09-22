@@ -5,6 +5,7 @@ import { mountVoiceControls } from "./voice-controls.js";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const app = $("#app");
+const sourceUrl = "https://github.com/TheCaveman135/Carvis";
 const connectionPath=id=>id==='home-assistant'?'/api/home-assistant':`/api/integrations/${encodeURIComponent(id)}`;
 const modal = $("#modal");
 const state = {
@@ -381,7 +382,7 @@ function renderAuth(setup) {
             el("span", {}, icon("spark"), "Your personality"),
           ),
         ),
-        el("div", { class: "auth-footer" }, "CARVIS / YOUR SMART HOME"),
+        el("div", { class: "auth-footer" }, "CARVIS / YOUR SMART HOME · ", el("a", { href: sourceUrl, target: "_blank", rel: "noopener noreferrer" }, "Source code")),
       ),
       el(
         "section",
@@ -545,6 +546,7 @@ function renderShell() {
     el(
       "div",
       { class: "sidebar-bottom" },
+      el("a", { class: "source-link", href: sourceUrl, target: "_blank", rel: "noopener noreferrer" }, "Source code · AGPL 3.0"),
       el(
         "div",
         { class: "profile-row" },
