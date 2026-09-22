@@ -3,7 +3,7 @@
   "version": "0.3.3",
   "private": true,
   "type": "module",
-  "description": "A personal AI chatbot, expanded through optional integrations.",
+  "description": "A smart home controller built around Home Assistant, expanded through optional integrations.",
   "engines": {
     "node": ">=22.18.0"
   },

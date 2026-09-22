@@ -107,13 +107,13 @@ export class Registry {
                 entry.config[f.key].length > 0),
           );
       return {
+        builtIn: m.builtIn === true,
         id: m.id,
         name: m.name,
         description: m.description,
         version: m.version,
         icon: m.icon,
         category: m.category,
-        homeAssistant: m.homeAssistant,
         setupSteps: m.setupSteps || [],
         controls: m.controls,
         dependsOn: m.dependsOn || [],
@@ -148,6 +148,7 @@ export class Registry {
         next[key] = value;
       }
     }
+    if(m.builtIn && patch.enabled===false && old.enabled)throw Error('Home Assistant is built into Carvis. Reconfigure it in Settings.');
     const enabled = patch.enabled ?? old.enabled;
     if (typeof enabled !== "boolean")
       throw Error("Enabled must be true or false.");
@@ -248,7 +249,7 @@ export class Registry {
   }
   configHash() {
     return createHash("sha256")
-      .update(JSON.stringify(this.store.config.integrations))
+      .update(JSON.stringify([this.store.config.homeAssistant,this.store.config.integrations]))
       .digest("hex");
   }
   async invoke(name, args, options = {}) {

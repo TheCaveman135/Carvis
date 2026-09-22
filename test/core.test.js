@@ -113,7 +113,7 @@ test("disabled integrations have no tools; protected gestures require one-time a
   );
   assert.equal(calls.length, 1);
 });
-test("chat core operates without integrations and passes recent history and user memory", async (t) => {
+test("home controller core retains conversation context without optional integrations", async (t) => {
   const s = new Store(fixture(t)),
     r = new Registry(s);
   s.config.model.model = "fixture";
@@ -135,7 +135,7 @@ test("chat core operates without integrations and passes recent history and user
   assert.equal(seen[0].tools.length, 0);
   assert(seen[1].messages.some((m) => m.content === "Hi"));
   assert.match(seen[0].system, /Prefers concise/);
-  assert(!seen[0].system.includes("Home Assistant"));
+  assert(seen[0].system.includes("Home Assistant is built into Carvis"));
 });
 test("model-generated confirmation fields cannot grant authority", async (t) => {
   const s = new Store(fixture(t)),

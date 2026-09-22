@@ -1,31 +1,31 @@
 /** Setup guidance is Integration metadata, not chatbot behavior or permissions. */
 export const CATALOG = {
-  'home-assistant': ['required', 'Connects your own Home Assistant server. Choose exactly which devices Carvis can see and control.', 'Home Assistant', ['Enter your Home Assistant URL and long-lived access token.', 'Devices appear automatically after connecting. Choose what Carvis may see and control.']],
-  'apple-tv': ['required', 'TV AI Controller sends every TV command through your Home Assistant controller.', 'TV AI Controller', ['Connect Home Assistant and allow your remote or TV for control.', 'Configure a camera feed and remote in the controller, then choose your devices here.', 'Choose whether navigation is silent and playback replies are brief.']],
-  proactivity: ['required', 'Uses Home Assistant events to notice changes around your home.', 'Proactive home alerts', ['Connect Home Assistant and select the devices to observe.', 'Choose when Carvis may interrupt you and how often.']],
-  cameras: ['recommended', 'Home Assistant is needed for live camera feeds. Uploaded images can be inspected without it.', 'Cameras & Images', ['Choose a vision model and enable Advanced assistant.', 'For live cameras, connect Home Assistant and select cameras for observation.', 'Add room notes or upload an image, then give Carvis a specific question.']],
-  protocols: ['recommended', 'Timers and reminders work alone. Device actions and home-event triggers need Home Assistant.', 'Routines, timers & alarms', ['Enable Advanced assistant.', 'Create a timer, alarm, or describe a routine to Carvis.', 'Connect Home Assistant for routines that use your devices.']],
-  speech: ['recommended', 'Home Assistant is needed for HA speakers. Local speakers, phone, and physical Carvis audio can work without it.', 'Spoken replies', ['Choose where replies should play.', 'For phone audio, pair the Even Realities companion and enable its speaker.', 'For home speakers, connect Home Assistant and select a speaker and TTS provider.']],
-  'even-realities': ['recommended', 'Chat and captions work without Home Assistant. Smart-home widgets need a connected home.', 'Even Realities glasses', ['Enter the Carvis address your phone can reach.', 'Generate a pairing token and enter it in the companion app.', 'Choose display, microphone, and phone-audio preferences.']],
-  'assistant-engine': ['not-required', 'Works with your model provider. Home Assistant is only needed for home-related abilities.', 'Advanced assistant', ['Choose your main model in Carvis Settings.', 'Enable this shared component before adding voice, routines, memory, or other integrations that depend on it.', 'Enable the individual features you want in Integrations. Basic text chat works without this component.']],
-  voice: ['not-required', 'Uses a microphone and your speech provider. No smart-home connection is needed.', 'Voice input & chat', ['Choose a speech recognition provider and add its key.', 'Pair a microphone device such as the glasses companion. Deepgram transcribes your speech for Carvis.']],
-  'learned-memory': ['not-required', 'Stores facts, preferences, and patterns in this Carvis installation.', 'Memory & patterns', ['Enable Advanced assistant.', 'Add what you want Carvis to remember, and review learned suggestions.']],
-  'web-search': ['not-required', 'Connects directly to your search provider.', 'Search the web', ['Choose your search provider and enter its API key.', 'Ask Carvis for current information in chat.']],
-  atlas: ['not-required', 'Connects to your Project Atlas server.', 'Project Atlas connection', ['Enter your Atlas server address and credentials.', 'Choose which project context to share with Carvis.']],
-  desktop: ['not-required', 'Connects to your desktop agent directly.', 'Computer agent connection', ['Configure your desktop agent and its connection.', 'Use this page to send a request and check its delivery.']],
-  'physical-carvis': ['not-required', 'Pairs with a physical Carvis device directly.', 'Carvis hardware', ['Pair your device with a private token.', 'Check device contact and command acknowledgements here.']],
+  'home-assistant': ['Home Assistant', ['Name your home and enter your Home Assistant URL and access token.', 'Devices appear automatically. Choose what Carvis may see and control.', 'Manage your connection, entities, and guards in Settings → Home Assistant.']],
+  'apple-tv': ['TV AI Controller', ['Select a TV or remote for control in Settings → Home Assistant.', 'Configure a camera feed and remote in the controller, then choose your devices here.', 'Choose whether navigation is silent and playback replies are brief.']],
+  proactivity: ['Proactive home alerts', ['Select the devices Carvis may observe in Settings → Home Assistant.', 'Choose when Carvis may interrupt you and how often.']],
+  cameras: ['Cameras & Images', ['Choose a vision model and enable Advanced assistant.', 'Select cameras for observation in Settings → Home Assistant.', 'Add room notes or upload an image, then give Carvis a specific question.']],
+  protocols: ['Routines, timers & alarms', ['Enable Advanced assistant.', 'Create a timer, alarm, or describe a routine to Carvis.', 'Device actions use the entities and permissions in Settings → Home Assistant.']],
+  speech: ['Spoken replies', ['Choose where replies should play.', 'For phone audio, pair the Even Realities companion and enable its speaker.', 'For home speakers, select a speaker for control in Home Assistant settings and choose a TTS provider here.']],
+  'even-realities': ['Even Realities glasses', ['Enter the Carvis address your phone can reach.', 'Generate a pairing token and enter it in the companion app.', 'Choose display, microphone, and phone-audio preferences. Home widgets use your core entity permissions.']],
+  'assistant-engine': ['Advanced assistant', ['Choose your main model in Carvis Settings.', 'Enable this shared component for voice, routines, memory, or other integrations that depend on it.', 'Enable the individual features you want in Integrations.']],
+  voice: ['Voice input & chat', ['Choose a microphone on the Carvis server or paired Even glasses.', 'Add your speech recognition key. Deepgram transcribes requests for your Carvis model.', 'Enable Spoken replies and choose a speaker to hear responses.']],
+  'learned-memory': ['Continuity Memory', ['Enable Advanced assistant.', 'Review remembered facts, preferences, and changing details. Existing memories are imported automatically.', 'Explore what Carvis recalls for a question, inspect learned routines, or forget an entry.']],
+  'web-search': ['Search the web', ['Choose your search provider and enter its API key.', 'Ask Carvis for current information.']],
+  atlas: ['Project Atlas connection', ['Enter your Atlas server address and credentials.', 'Choose which project context to share with Carvis.']],
+  desktop: ['Computer agent connection', ['Configure your desktop agent and its connection.', 'Use this page to send a request and check its delivery.']],
+  'physical-carvis': ['Carvis hardware', ['Pair your device with a private token.', 'Check device contact and command acknowledgements here.']],
 };
 const DESCRIPTIONS = {
-  'home-assistant': 'Connect your smart home so Carvis can check devices and control the ones you allow. Requires your own Home Assistant server.',
+  'home-assistant': 'Carvis’s built-in home connection. Choose which devices it can see and control, and manage their guards.',
   'apple-tv': 'Ask Carvis to find a movie, open an app, or navigate your TV. Works with a camera feed and a compatible Home Assistant remote configured in the TV AI controller.',
   proactivity: 'Let Carvis notice changes in your home and offer relevant updates without waiting for you to ask. Choose when it may interrupt.',
   cameras: 'Ask questions about uploaded pictures or selected camera feeds—for example, what is in a room. Add room notes to help Carvis understand what it sees.',
-  protocols: 'Set timers and alarms, or create repeatable routines. Connect Home Assistant for routines triggered by your devices or that control your home.',
+  protocols: 'Set timers and alarms, or create routines triggered by home events, schedules, and your requests. Device actions follow your Home Assistant permissions.',
   speech: 'Have Carvis read its replies aloud through a speaker on the Carvis server, your phone, a Home Assistant speaker, or Carvis hardware. Choose where the audio plays.',
   'even-realities': 'Use Carvis on Even Realities glasses: speak requests, read replies, and use interactive widgets. Requires the companion app and compatible glasses.',
-  'assistant-engine': 'The shared component required by voice, memory, routines, and other advanced integrations. Enable this first, then add the features you want. Basic text chat works without it.',
+  'assistant-engine': 'Adds multi-step planning and powers voice, memory, routines, and proactive alerts. Enable it for those integrations; core home control is already built into Carvis.',
   voice: 'Talk to Carvis instead of typing. Deepgram turns microphone audio into requests for your normal Carvis model. Spoken replies controls audio playback separately.',
-  'learned-memory': 'Help Carvis remember your preferences and learn recurring patterns. Review what it remembers and remove anything you no longer want saved.',
+  'learned-memory': 'Keep context across time: facts, preferences, changing details, and recurring routines. Review evidence, conflicting memories, and history; forget anything you choose.',
   'web-search': 'Let Carvis look up current information online when answering you. Requires a supported search provider and API key.',
   atlas: 'Connect an existing Project Atlas server to share project context and save notes from Carvis. Only needed if you already use Project Atlas.',
   desktop: 'Send requests to a separate agent running on your computer and check their delivery. Requires a compatible desktop agent; this does not install one.',
@@ -58,8 +58,7 @@ const FIELD_HELP = {
   areaNotes: ['Room and object notes', 'Describe rooms or objects to help Carvis understand your home and camera images.'],
 };
 export function decorateAssistantIntegration(module) {
-  const [requirement, note, title, steps] = CATALOG[module.id];
-  module.homeAssistant = { requirement, note };
+  const [title, steps] = CATALOG[module.id];
   if (['apple-tv','proactivity'].includes(module.id)) module.dependsOn = [...new Set([...(module.dependsOn || []), 'home-assistant'])];
   module.name = title;
   module.description = DESCRIPTIONS[module.id];

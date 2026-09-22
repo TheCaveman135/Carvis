@@ -12,13 +12,13 @@ async function fixture(t) {
  for(const id of ['home-assistant','apple-tv','even-realities']) {const {default:module}=await import(`../server/integrations/${id}.js`);registry.register({...module,fields:structuredClone(module.fields)});}
  registerAssistantServices(registry);return registry;
 }
-test('all bundled integrations explain HA requirements and expose native management without legacy links',async t=>{
+test('bundled integrations share home setup and expose native management without HA categories',async t=>{
  const registry=await fixture(t),catalog=registry.list();assert.equal(catalog.length,14);
- for(const item of catalog){assert(['required','recommended','not-required'].includes(item.homeAssistant.requirement));assert(item.homeAssistant.note);assert(item.setupSteps.length);assert.equal(item.controls.module,'/integrations/assistant-engine/controls.js');assert.equal(item.workspaceUrl,undefined);assert.equal(item.workspaceDependsOn,undefined);}
+ for(const item of catalog){assert.equal(item.homeAssistant,undefined);assert(item.setupSteps.length);assert.equal(item.controls.module,'/integrations/assistant-engine/controls.js');assert.equal(item.workspaceUrl,undefined);assert.equal(item.workspaceDependsOn,undefined);}
  const byId=id=>catalog.find(i=>i.id===id);
- assert.equal(byId('apple-tv').homeAssistant.requirement,'required');assert(byId('apple-tv').dependsOn.includes('home-assistant'));
- assert.equal(byId('cameras').homeAssistant.requirement,'recommended');assert.match(byId('cameras').homeAssistant.note,/Uploaded images/);
- assert.equal(byId('protocols').homeAssistant.requirement,'recommended');assert.equal(byId('voice').homeAssistant.requirement,'not-required');
+ assert(byId('apple-tv').dependsOn.includes('home-assistant'));
+ assert.match(byId('cameras').setupSteps.join(' '),/Settings → Home Assistant/);
+ assert.equal(byId('learned-memory').name,'Continuity Memory');
 });
 test('speech choices match supported routes and context settings do not require raw JSON',async t=>{
  const registry=await fixture(t);

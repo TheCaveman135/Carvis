@@ -115,3 +115,20 @@ must support that API. Existing deployments of the separate Python add-on can
 apply `docs/controller-upgrades/screen-source.patch` and rebuild the add-on.
 The update persists the choice and refuses source changes during running tasks.
 No model command or remote press is sent when changing the screen source.
+
+## Core home and Continuity Memory
+
+Home Assistant is registered as a built-in core service. Its credentials and entity
+permissions persist under `config.homeAssistant`; a nonserialized compatibility
+alias keeps existing integrations using the same guarded registry API. It is
+excluded from the optional integration catalog and cannot be disabled as a plugin.
+Core settings use `/api/home-assistant`; old integration routes remain compatible.
+New installations must test their connection and select entities before finishing
+home onboarding. The Home page only displays selected entities.
+
+Continuity Memory retains the `learned-memory` capability ID for saved settings
+and tool compatibility, while replacing its storage and pattern learner with the
+local temporal evidence system. Its SQLite database and one-time migration markers
+live beneath the private runtime directory. Owner rules remain enforced when
+optional learning is disabled. Existing memories and pattern evidence migrate
+without changing authorizations. The original memory-project folder is untouched.

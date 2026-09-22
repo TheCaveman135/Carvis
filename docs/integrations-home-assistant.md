@@ -1,6 +1,18 @@
-# Home Assistant integration
+# Home Assistant — built into Carvis
 
-Open **Integrations → Home Assistant**, enter your server URL and a long-lived access token, and save. You can keep the integration disabled while setting it up. Reopen its settings to test the saved connection and load entities, then enable it when ready. All credentials stay on your Carvis server; they are not sent to the model. Use HTTPS when connecting across networks.
+Home Assistant is a core service. New owners must name their home, enter their
+HA URL and long-lived token, and select entities during onboarding.
+Afterward use **Settings → Home Assistant** for connection changes, entity
+selection, room notes, device types, dry run, and guard overrides.
+Existing installations migrate their saved settings without changing access.
+
+## Connection and devices
+
+Enter your server URL and long-lived access token during home setup. Settings save
+automatically and entities load as soon as the connection is saved. Choose at least
+one entity, then finish setup. Afterward, open **Settings → Home Assistant** to
+reconfigure the connection or test it. Credentials stay on your Carvis server and
+are never sent to the model. Use HTTPS when connecting across networks.
 
 Select the entities Carvis may observe and control. The owner-facing entity picker may list your devices; the model sees only your selected entities. A controlled entity is also observable. Removing an entity takes effect on the next tool execution, including previously created widgets.
 
@@ -8,7 +20,7 @@ Select the entities Carvis may observe and control. The owner-facing entity pick
 
 Each controllable entity has a guard dropdown in its settings:
 
-- **Auto · device default** uses protection inferred from the device.
+- **Auto – Standard / Auto – Critical** uses protection inferred from the device.
 - **Standard** explicitly permits normal control, overriding inferred protection.
 - **Require confirmation** asks for owner confirmation before acting.
 

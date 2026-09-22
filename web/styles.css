@@ -2028,3 +2028,7 @@ dialog::backdrop {
 .voice-history{display:grid;grid-template-columns:minmax(170px,240px) minmax(0,1fr);gap:24px}.voice-history-list{display:flex;flex-direction:column;gap:8px}.voice-history-list button{text-align:left;white-space:normal}.voice-history-messages{max-height:70vh;overflow:auto;min-width:0}.voice-history-header{display:flex;justify-content:space-between;align-items:center;gap:12px}.voice-history-message{padding:16px;margin:12px 0;border:1px solid var(--line);border-radius:12px}.voice-history-message small{display:block;margin-top:6px}.voice-history-message p{overflow-wrap:anywhere}.voice-history-message.user{margin-left:24px}@media(max-width:700px){.voice-history{grid-template-columns:1fr}.voice-history-list{max-height:180px;overflow:auto}}
 
 .voice-history-page{padding:28px;max-width:1200px;width:100%;margin:0 auto}.voice-history-message{background:var(--panel)}
+
+.home-device-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;margin-top:24px}.home-device-grid .control-card{margin:0}
+
+.recall-preview{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}

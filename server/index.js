@@ -1,3 +1,5 @@
+import {initializeHome,homeReady} from './home-setup.js';
+import homeAssistant from './home-assistant.js';
 import { integrationModels } from './integration-models.js';
 import { publicGlobalKeys, updateGlobalKeys, resolvedMainModel } from './global-keys.js';
 import http from "node:http";
@@ -81,7 +83,9 @@ export async function createApp({
   if (modules) {
     for (const module of modules) registry.register(module);
   } else {
-    for (const id of ["home-assistant", "apple-tv", "even-realities"]) {
+    initializeHome(store);
+    registry.register({...homeAssistant,builtIn:true,fields:structuredClone(homeAssistant.fields)});
+    for (const id of ["apple-tv", "even-realities"]) {
       const { default: module } = await import(`./integrations/${id}.js`);
       registry.register({ ...module, fields: structuredClone(module.fields) });
     }
@@ -231,6 +235,24 @@ export async function createApp({
           { success: true },
           { "Set-Cookie": clearSessionCookie() },
         );
+      if(path==='/api/home-assistant/complete' && req.method==='POST'){
+        if(!user)throw fail('Sign in to configure your home.',401);
+        const cfg=store.config.homeAssistant?.config || {};
+        if(!String(cfg.homeName || '').trim())throw fail('Name your home first.');
+        const test=await registry.test('home-assistant');
+        if(!test.success)throw fail(test.message || 'Connect Home Assistant first.');
+        if(!(cfg.observed?.length || cfg.controlled?.length))throw fail('Select at least one entity for Carvis to observe or control.');
+        await registry.configure('home-assistant',{enabled:true});
+        store.config.homeAssistant.entitiesReviewed=true;store.saveConfig();
+        return json(res,200,{success:true});
+      }
+      if(path.startsWith('/api/home-assistant') && registry.modules.get('home-assistant')?.builtIn){
+        if(!user)throw fail('Sign in to configure your home.',401);
+        const suffix=path.slice('/api/home-assistant'.length);
+        if(!suffix && req.method==='PUT')return json(res,200,await registry.configure('home-assistant',{config:(await body(req)).config}));
+        if(suffix==='/test' && req.method==='POST')return json(res,200,await registry.test('home-assistant'));
+        if(suffix==='/entities' && req.method==='GET')return json(res,200,await registry.modules.get('home-assistant').route({method:'GET',path:'/entities'},registry.contextForTest('home-assistant')));
+      }
       if(path === '/api/voice-conversations' && req.method === 'GET'){
         if(!user)throw fail('Sign in to Carvis.',401);
         return json(res,200,{conversations:store.data.conversations.filter(c=>c.channel==='voice').sort((a,b)=>b.updatedAt-a.updatedAt)});
@@ -240,7 +262,9 @@ export async function createApp({
           profile: store.config.profile,
           model: publicModel(resolvedMainModel(store.config)),
           apiKeys: publicGlobalKeys(store.config),
-          integrations: registry.list(),
+          integrations: registry.list().filter(i=>!i.builtIn),
+          homeAssistant: registry.list().find(i=>i.builtIn) || null,
+          homeSetupRequired: !!registry.modules.get('home-assistant')?.builtIn && !homeReady(store),
           conversations: store.data.conversations
             .map(({ messages, ...c }) => c)
             .sort((a, b) => b.updatedAt - a.updatedAt),

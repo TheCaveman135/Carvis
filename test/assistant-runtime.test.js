@@ -266,6 +266,7 @@ test('advanced engine receives trusted confirmation evidence through the real mo
   provider.listen(0,'127.0.0.1');await once(provider,'listening');
   t.after(()=>new Promise(resolve=>provider.close(resolve)));
   const app=await application(t,{engine:true});
+  app.store.config.homeAssistant.enabled=true;app.store.config.homeAssistant.entitiesReviewed=true;
   app.store.config.model={provider:'compatible',baseUrl:`http://127.0.0.1:${provider.address().port}/v1`,model:'fixture-local-provider',apiKey:''};
   await app.runtime.refresh();
   const conversation=app.store.createConversation();

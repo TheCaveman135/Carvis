@@ -1,12 +1,11 @@
 # Working on Carvis
 
-Carvis is a generic, self-hosted chatbot. All new capabilities and external
-knowledge sources belong in **Integrations**.
+Carvis is a self-hosted smart home controller built around Home Assistant. Additional
+capabilities and knowledge sources belong in **Integrations**.
 
-- Keep the core limited to conversation, model transport, owner-managed memory,
-  authentication, storage, and the integration lifecycle. Core bug fixes and
-  accessibility improvements are welcome; do not add service-specific tools or
-  background agents to the chat loop.
+- The core owns home onboarding, Home Assistant connection and entity permissions,
+  conversation, model transport, authentication, storage, and integration lifecycle.
+  Preserve existing guards when adding home controls.
 - Give each integration its own setup fields, permission description, validation,
   tools, tests, and documentation. Discover settings from its field schema.
 - A fresh installation has no enabled integrations, credentials, personal facts,

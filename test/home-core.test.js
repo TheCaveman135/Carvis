@@ -1,0 +1,33 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {once} from 'node:events';
+import {Store} from '../server/store.js';
+import {initializeHome,homeReady} from '../server/home-setup.js';
+import {createApp} from '../server/index.js';
+import {createAccount,issueSession} from '../server/auth.js';
+function directory(t){const dir=mkdtempSync(join(tmpdir(),'carvis-home-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));return dir;}
+test('HA migration preserves permissions and credentials as core settings',t=>{
+ const dir=directory(t),store=new Store(dir);
+ const original={baseUrl:'https://ha.example',token:'private-test-token',observed:['light.desk'],controlled:['light.desk'],guards:{'light.desk':'protected'},dryRun:true};
+ store.config.integrations['home-assistant']={enabled:true,config:original};initializeHome(store);
+ assert(homeReady(store));assert.deepEqual(store.config.homeAssistant.config,{...original,homeName:'My Home'});
+ assert(!Object.keys(store.config.integrations).includes('home-assistant'));
+ const reloaded=new Store(dir);assert(!reloaded.config.integrations['home-assistant']);initializeHome(reloaded);
+ assert.deepEqual(reloaded.config.integrations['home-assistant'].config.guards,original.guards);
+});
+test('fresh home setup must connect, name the home, and select devices; core HA stays outside catalog',async t=>{
+ const dir=directory(t),store=new Store(dir);store.config.auth=createAccount('owner','fixture-long-password');store.saveConfig();
+ const app=await createApp({dataDirectory:dir,fetcher:async url=>new Response(JSON.stringify(String(url).endsWith('/api/')?{message:'API running'}:[]),{headers:{'content-type':'application/json'}})});
+ t.after(async()=>{await app.registry.close();await new Promise(resolve=>app.server.close(resolve));});app.server.listen(0,'127.0.0.1');await once(app.server,'listening');
+ const base=`http://127.0.0.1:${app.server.address().port}`,cookie=`carvis_session=${issueSession(app.store.config)}`;
+ const request=(path,body,method='POST')=>fetch(base+path,{method:body?method:'GET',headers:{cookie,'content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
+ let state=await (await request('/api/state')).json();assert(state.homeSetupRequired);assert(!state.integrations.some(i=>i.id==='home-assistant'));assert(state.homeAssistant.builtIn);
+ assert.equal((await request('/api/home-assistant/complete',{})).status,400);
+ await request('/api/home-assistant',{config:{homeName:'Demo Home',baseUrl:'https://ha.example',token:'fixture-secret',observed:['light.desk'],controlled:[],guards:{}}},'PUT');
+ assert.equal((await request('/api/home-assistant/complete',{})).status,200);
+ state=await (await request('/api/state')).json();assert.equal(state.homeSetupRequired,false);assert.equal(state.homeAssistant.config.homeName,'Demo Home');assert(!JSON.stringify(state).includes('fixture-secret'));
+ assert.equal((await request('/api/integrations/home-assistant',{enabled:false},'PUT')).status,400);
+});

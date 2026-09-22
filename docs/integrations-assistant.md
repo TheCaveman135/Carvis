@@ -1,30 +1,25 @@
 # Assistant Integrations
 
-The base Carvis chatbot works without these Integrations. Enable **Assistant
-engine** to use the full tool/voice orchestration runtime, then enable the
-capabilities you want. Each has its own switch and settings in Integrations.
-The engine runs as an isolated child process; disabling it stops those services.
-Configuration changes restart that process without replaying interrupted actions.
+Carvis is a smart home controller with Home Assistant built in. Onboarding collects
+your home name, connection, and entity permissions. After setup, use **Settings →
+Home Assistant** to manage the connection, devices, room notes, and advanced settings.
+
+Optional integrations add abilities to that home. **Advanced assistant** supplies
+the shared planning and voice runtime for integrations such as memory, routines,
+and proactive alerts. It runs as an isolated child process; configuration changes
+restart it without replaying interrupted actions.
 
 ## Find settings and controls
 
-The integration center is a responsive card grid with three groups. HA means
-Home Assistant:
-
-| Group | Integrations |
-| --- | --- |
-| HA required | Home Assistant; Apple TV AI; Helpful updates (proactivity) |
-| HA recommended | Cameras & Images; Routines, timers & alarms; Speech output; Even Realities glasses |
-| HA not required | Assistant engine; Voice conversation; Memory & patterns; Search the web; Project Atlas; Desktop connection; Physical Carvis |
-
-Camera feeds require HA, but uploaded images do not. Timers and alarms work
-without HA; home-event triggers and device actions need it. Phone/physical-device
-speech works directly, while HA speakers need the HA connection.
+The integration center is one responsive card grid. Search by name or setting,
+or filter for enabled integrations and those needing attention. Home Assistant
+is in Settings, outside this optional catalog. All integrations reuse the same
+home connection and selected entity permissions.
 
 Choose **Manage** or **Set up** on a card. Every integration stays in the main
 Carvis UI:
 
-- **Overview:** setup steps, HA requirements, and other integrations you need.
+- **Overview:** enable switch, quick controls, connection preferences, and dependencies.
 - **Controls:** everyday actions, such as TV tasks, timer creation, memory edits,
   image inspection, live voice, and pairing.
 - **Settings:** connection details and behavior, grouped into submenus. Optional
@@ -32,11 +27,11 @@ Carvis UI:
   fields rather than JSON.
 - **Activity:** transcripts, routine history, speech delivery, or execution traces.
 
-**Enable integration** takes effect after **Save changes**. You can save setup
-while disabled. **Test saved connection** checks saved values. Search the catalog
+**Enable integration** takes effect immediately. Settings save automatically,
+including setup entered while disabled. **Test saved connection** checks saved values. Search the catalog
 by name or setting, such as “silent navigation.”
 
-For TV replies, open **Apple TV AI → Settings → Reply behavior**. Both switches
+For TV replies, open **TV AI Controller → Settings → Reply behavior**. Both switches
 default to on. The engine provides deterministic fast navigation; errors and
 confirmations remain visible. **Controls** shows the screen, task progress, and a
 context box that updates the same task without restarting it. Progress refreshes
@@ -44,24 +39,24 @@ without erasing typed context. Old workspace bookmarks redirect to the new UI.
 
 ## Voice and display
 
-- **Voice conversation:** configure Deepgram or AssemblyAI credentials, model,
-  vocabulary, wake/coherence settings, and confirmation behavior. Model routing
-  for live speech belongs here. Live voice has separate API URL/model settings;
-  the configured provider must support its live session/delegation contract.
-- **Speech output:** choose phone-only, HA-only, physical-only, or physical-then-HA.
+- **Voice input & chat:** configure Deepgram or AssemblyAI credentials, model,
+  vocabulary, wake/coherence settings, and confirmation behavior. Choose a local microphone or paired Even glasses. Local listening continues
+  with the webpage closed unless muted. AI model roles are also available in
+  **Settings → Model Router** when this integration is enabled.
+- **Spoken replies:** choose a local speaker, phone-only, HA-only, physical-only, or physical-then-HA.
   Set the HA speaker, TTS entity, voice, and automatic-reply preference. Phone
   playback requires a connected full companion that acknowledges playback.
   Intentional silent TV navigation remains silent when that option is on.
 - **Even Realities:** use the full [companion](integrations-even-realities.md) for
   the existing voice, phone audio, HUD, camera, and interactive widget behavior.
-  It needs Assistant engine; microphone input also needs Voice conversation,
-  and spoken output needs Speech output. The Basic companion remains available
-  for installations using only the base chatbot.
-- **Physical Carvis:** configure a scoped device credential, then report device
+  It needs Advanced assistant; microphone input also needs Voice input & chat,
+  and spoken output needs Spoken replies. The Basic companion remains available
+  for installations using core home control without Advanced assistant.
+- **Carvis hardware:** configure a scoped device credential, then report device
   and dock state, poll commands, and acknowledge completion. Existing routes are
   `/api/physical-carvis/report`, `/commands`, and `/ack`; the latter two share
   the `/api/physical-carvis` prefix. Use `Authorization: Bearer <token>` or
-  `X-Carvis-Core-Token`. Pairing is owner-only under **Physical Carvis → Controls**.
+  `X-Carvis-Core-Token`. Pairing is owner-only under **Carvis hardware → Controls**.
   These are server/device contracts; no ESP32 firmware or audio hardware is
   included. The physical client must implement playback and acknowledgements.
 
@@ -75,11 +70,14 @@ without erasing typed context. Old workspace bookmarks redirect to the new UI.
 - **Proactivity & sessions:** configure interruption level, classifier model,
   importance, minimum gap, batching, and session settings. Protocol claims prevent
   duplicate reactions to the same event.
-- **Memory & patterns:** retrieve and edit learned facts/preferences, recall or
-  forget entries, dismiss tentative patterns, and manage owner rules. Learned
-  patterns are context, never permission. Standing owner rules remain constraints
-  even if learned-memory retrieval is disabled.
-- **Assistant engine:** configure orchestration limits, providers, pricing, and
+- **Continuity Memory:** retains dated facts, preferences, owner rules, and their
+  evidence. New facts can supersede older claims without losing history. Local
+  reflection connects related notes; repeated successful requests can become
+  tentative routines. Explore recalled context to see why information was chosen,
+  edit or forget memories, and dismiss patterns. Existing memories and patterns
+  migrate automatically. Patterns never grant permission; standing owner rules
+  remain constraints even when learning is disabled.
+- **Advanced assistant:** configure orchestration limits, providers, pricing, and
   escalation. The primary model and personality remain in main Settings. Roles
   specific to Voice, Cameras, Proactivity, and Memory appear in those plugins.
   Enter provider secrets in private credential fields or configured environment
@@ -87,11 +85,11 @@ without erasing typed context. Old workspace bookmarks redirect to the new UI.
 
 ## Home and connected services
 
-- **Home Assistant:** select visible/controlled entities and set their guards.
+- **Settings → Home Assistant (core):** select visible/controlled entities and set their guards.
   Dry run, allowed domains, cooldowns, occupancy bounds, manual overrides, and
   room/landmark notes remain configurable. Unselected resources stay out of model
   context. Owner setup pickers can enumerate devices so you can select them.
-- **Apple TV AI:** configure the existing controller and its TV transport IDs.
+- **TV AI Controller:** configure the existing controller and its TV transport IDs.
   Navigation permission can come from the selected TV media player; the transport
   remote need not become a visible Carvis entity. Configure silent navigation,
   short playback replies, and persistent controller context in this Integration.
@@ -120,14 +118,13 @@ remain usable when another extension or dependency is unavailable.
 
 ### Selecting Home Assistant entities
 
-Under Home Assistant → Settings → Devices & permissions, entities load automatically for a saved connection. Browse
+Under Settings → Home Assistant → Devices & permissions, entities load automatically for a saved connection. Browse
 room tabs, search, filter by type, or show observed entities only. The table shows
 name, entity ID, type, a read-only state snapshot, observation, interaction, and
 guard policy. Refresh entities to update rooms and states. Room assignments come
 from Home Assistant; entities without an assignment appear under Unassigned.
 
 Row selection is for bulk edits and does not itself grant access. Bulk actions
-apply only to marked rows within the current filters. Save changes to apply the
-permission draft. Removing observation also removes interaction and its guard
+apply only to marked rows within the current filters. Changes save automatically. Removing observation also removes interaction and its guard
 override. The existing Auto, Standard, and Require confirmation rules are unchanged.
 On narrow screens, scroll the table horizontally to reach the permission columns.

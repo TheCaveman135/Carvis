@@ -3,6 +3,7 @@ import { modelRouterEntries } from "./model-router.js";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const app = $("#app");
+const connectionPath=id=>id==='home-assistant'?'/api/home-assistant':`/api/integrations/${encodeURIComponent(id)}`;
 const modal = $("#modal");
 const state = {
   data: null,
@@ -102,10 +103,10 @@ function iconButton(label, symbol, action) {
 function brand() {
   return el(
     "a",
-    { href: "#chat", class: "brand", "aria-label": "Carvis home" },
+    { href: "#home", class: "brand", "aria-label": "Carvis home" },
     el("span", { class: "brand-mark", "aria-hidden": true }, "c"),
     el("span", { class: "brand-name" }, "carvis"),
-    el("span", { class: "brand-tag" }, "YOUR SPACE"),
+    el("span", { class: "brand-tag" }, "YOUR HOME"),
   );
 }
 function toast(message, error = false) {
@@ -326,7 +327,7 @@ function renderAuth(setup) {
       "p",
       {},
       setup
-        ? "Create your owner account. You’ll choose a model and connect integrations next."
+        ? "Create your owner account, then connect Home Assistant and choose your devices."
         : "Sign in to pick up where you left off.",
     ),
     setup ? field("Your name", name) : null,
@@ -357,7 +358,7 @@ function renderAuth(setup) {
         el(
           "div",
           { class: "auth-story-content" },
-          el("div", { class: "eyebrow" }, "AN ASSISTANT. YOUR WAY."),
+          el("div", { class: "eyebrow" }, "YOUR HOME. YOUR WAY."),
           el(
             "h1",
             {},
@@ -368,7 +369,7 @@ function renderAuth(setup) {
           el(
             "p",
             {},
-            "A place to think, ask, and get things done. Start with a conversation. Add possibilities as you go.",
+            "Your home, connected. Set up Carvis to understand your devices, respond to requests, and help with everyday routines.",
           ),
           el(
             "div",
@@ -378,7 +379,7 @@ function renderAuth(setup) {
             el("span", {}, icon("spark"), "Your personality"),
           ),
         ),
-        el("div", { class: "auth-footer" }, "CARVIS / A PERSONAL SPACE FOR AI"),
+        el("div", { class: "auth-footer" }, "CARVIS / YOUR SMART HOME"),
       ),
       el(
         "section",
@@ -449,6 +450,7 @@ function renderShell() {
     "nav",
     { class: "nav", "aria-label": "Main navigation" },
     ...[
+      ["home", "Home", "home"],
       ["chat", "Conversations", "chat"],
       ...(integrations.some(i=>i.id==='voice'&&i.enabled)?[["voice-conversations","Voice Conversations","chat"]]:[]),
       ["integrations", "Integrations", "grid"],
@@ -485,7 +487,7 @@ function renderShell() {
       el(
         "p",
         { class: "history-empty" },
-        "Good conversations start here.\nYours will appear as you go.",
+        "Your recent requests and replies will appear here.",
       ),
     );
   for (const conversation of conversations)
@@ -528,7 +530,7 @@ function renderShell() {
       icon("close"),
     ),
     button(
-      "New conversation",
+      "Ask Carvis",
       () => {
         closeMenu();
         navigate("chat");
@@ -553,7 +555,7 @@ function renderShell() {
           "div",
           { class: "profile-copy" },
           el("div", { class: "profile-name" }, displayName()),
-          el("div", { class: "profile-description" }, "Personal workspace"),
+          el("div", { class: "profile-description" }, state.data.homeAssistant?.config?.homeName || "Your home"),
         ),
         iconButton("Sign out", "exit", () =>
           act(async () => {
@@ -566,7 +568,7 @@ function renderShell() {
       ),
     ),
   );
-  const title = state.page === "voice-conversations" ? "Voice Conversations" :
+  const title = state.page === "home" ? (state.data.homeAssistant?.config?.homeName || "Home") : state.page === "home-setup" ? "Set up your home" : state.page === "voice-conversations" ? "Voice Conversations" :
     state.page === "integrations"
       ? "Integrations"
       : state.page === "settings"
@@ -593,7 +595,7 @@ function renderShell() {
       el(
         "div",
         { class: "breadcrumb" },
-        el("span", { class: "crumb-brand" }, "Your workspace"),
+        el("span", { class: "crumb-brand" }, "Your home"),
         el("span", { class: "sep" }, "/"),
         el("strong", {}, title),
       ),
@@ -631,7 +633,9 @@ async function route() {
   state.integrationCleanup?.(); state.integrationCleanup = null;
   const version = ++state.navVersion;
   const [page, encodedId, section] = location.hash.replace(/^#/, "").split("/");
-  state.page = ["integrations", "settings", "voice-conversations"].includes(page) ? page : "chat";
+  state.page = ["home","chat","integrations", "settings", "voice-conversations"].includes(page) ? page : "home";
+  if(state.data.homeSetupRequired)state.page='home-setup';
+  if(page==='integrations'&&encodedId==='home-assistant'){navigate('settings/home-assistant');return;}
   let requestedId = null;
   try {
     requestedId = encodedId ? decodeURIComponent(encodedId) : null;
@@ -661,6 +665,9 @@ async function route() {
     if (requestedId) await renderIntegrationDetail(main, requestedId, section || "overview", version);
     else renderIntegrations(main);
   }
+  else if (state.page === 'home-setup') renderHomeSettings(main,true);
+  else if (state.page === 'home') renderHome(main);
+  else if (state.page === "settings" && requestedId==='home-assistant') renderHomeSettings(main,false);
   else if (state.page === "settings") renderSettings(main);
   else if(state.page === "voice-conversations") renderVoiceConversations(main);
   else renderChat(main);
@@ -750,7 +757,7 @@ function renderChat(main) {
     {
       id: "composer-text",
       rows: "2",
-      placeholder: `What’s on your mind${state.data.profile?.displayName ? `, ${state.data.profile.displayName}` : ""}?`,
+      placeholder: "Ask about your home or tell Carvis what to do…",
       "aria-label": "Message Carvis",
       maxlength: 16000,
     },
@@ -844,17 +851,17 @@ function renderWelcome() {
   const suggestions = [
     {
       icon: "plan",
-      title: "Make room for a good idea",
-      detail: "Turn a rough thought into a clear plan.",
+      title: "Check on your home",
+      detail: "See what’s happening with your selected devices.",
       prompt:
-        "Help me turn an idea into a practical plan. Ask me what I’m working on.",
+        "Give me a brief status of the home devices you can see. Highlight anything that needs attention.",
     },
     {
       icon: "book",
-      title: "Understand something new",
-      detail: "Get a clearer picture, one question at a time.",
+      title: "Explore your home controls",
+      detail: "Find out what Carvis can do for your home.",
       prompt:
-        "I want to understand something new. Ask me what topic I’m curious about.",
+        "What can you help me control in my home, using my selected devices and enabled integrations?",
     },
     {
       icon: "grid",
@@ -866,18 +873,18 @@ function renderWelcome() {
   return el(
     "section",
     { class: "welcome", "aria-label": "Welcome" },
-    el("div", { class: "eyebrow" }, "A LITTLE SPACE. A LOT OF POSSIBILITY."),
+    el("div", { class: "eyebrow" }, "YOUR HOME, WITH CARVIS."),
     el(
       "h1",
       {},
-      "Let’s make something",
+      "Your home,",
       el("br"),
-      el("span", {}, "of your next thought."),
+      el("span", {}, "a request away."),
     ),
     el(
       "p",
       { class: "welcome-description" },
-      "Ask a question. Untangle an idea. Get things moving. Carvis is here to help, in whatever way works for you.",
+      "Check your devices, control your rooms, and ask for help. Carvis works with the home and permissions you’ve set up.",
     ),
     el(
       "div",
@@ -1355,20 +1362,10 @@ function integrationIcon(id) {
         ? "tv"
         : "plug";
 }
-const integrationCategories = [
-  { id: "required", name: "HA required", description: "These abilities need a linked Home Assistant server.", icon: "home" },
-  { id: "recommended", name: "HA recommended", description: "Useful on their own. Connect Home Assistant for home devices and extra features.", icon: "plug" },
-  { id: "not-required", name: "HA not required", description: "These abilities work without a Home Assistant connection.", icon: "spark" },
-];
-function integrationCategory(integration) {
-  const supplied = integration.homeAssistant?.requirement;
-  if (integrationCategories.some(category => category.id === supplied)) return supplied;
-  return integration.dependsOn?.some(d => (typeof d === 'string' ? d : d.id) === 'home-assistant' && !d.optional) ? 'required' : 'not-required';
-}
 function integrationDependencies(integration, key = "dependsOn") {
   return (Array.isArray(integration[key]) ? integration[key] : []).map(value => {
     const id = typeof value === "string" ? value : value?.id;
-    const dependency = (state.data.integrations || []).find(item => item.id === id);
+    const dependency = [...(state.data.integrations || []),...(state.data.homeAssistant?[state.data.homeAssistant]:[])].find(item => item.id === id);
     return { id, name: dependency?.name || value?.label || id || "Unknown integration", enabled: Boolean(dependency?.enabled), optional: Boolean(value?.optional), integration: dependency };
   });
 }
@@ -1393,9 +1390,8 @@ function integrationControlsMissing(integration) {
     .filter(item => !item.optional && !item.enabled).map(item => [item.id, item])).values()];
 }
 function integrationMatchesSearch(integration, query) {
-  const category = integrationCategories.find(group => group.id === integrationCategory(integration));
   const fields = (integration.fields || []).flatMap(field => [field.label, field.description, field.help, typeof field.group === "string" ? field.group : field.group?.label, String(field.key || "").replace(/([a-z])([A-Z])/g, "$1 $2").replaceAll("__", " ")]);
-  const text = [integration.name, integration.description, category?.name, ...fields].filter(Boolean).join(" ").toLowerCase();
+  const text = [integration.name, integration.description, ...fields].filter(Boolean).join(" ").toLowerCase();
   return String(query).trim().toLowerCase().split(/\s+/).every(word => text.includes(word));
 }
 function integrationCard(integration) {
@@ -1404,7 +1400,7 @@ function integrationCard(integration) {
     el("div", { class: "integration-top" }, el("div", { class: "integration-icon" }, icon(paths[integration.icon] ? integration.icon : integrationIcon(integration.id))),
       el("div", { class: `integration-status ${status.tone}` }, el("span", { class: `status-dot${status.tone === "off" ? " off" : status.tone === "attention" ? " attention" : ""}` }), status.label)),
     el("h3", {}, integration.name), el("p", {}, integration.description),
-    el("p", {class:"integration-ha-note"}, integration.homeAssistant?.note || "No Home Assistant connection needed."),
+
     el("div", { class: "integration-footer" }, el("span", { class: "version" }, integration.enabled ? "Ready to manage" : "Optional integration"), button(integration.configured ? "Manage" : "Set up", () => navigate(`integrations/${integration.id}`), "compact", "arrow")));
 }
 function renderIntegrations(main) {
@@ -1424,13 +1420,7 @@ function renderIntegrations(main) {
     groups.replaceChildren();
     filterButtons.forEach(({ button: control, value }) => { control.classList.toggle("active", value === filter); control.setAttribute("aria-pressed", String(value === filter)); });
     resultCount.textContent = query || filter !== "all" ? `${matches.length} ${matches.length === 1 ? "integration" : "integrations"}` : "";
-    for (const category of integrationCategories) {
-      const items = matches.filter(item => integrationCategory(item) === category.id);
-      if (!items.length) continue;
-      groups.append(el("section", { class: "integration-category", "aria-labelledby": `category-${category.id}` },
-        el("div", { class: "category-heading" }, el("div", { class: "category-title" }, icon(category.icon), el("h2", { id: `category-${category.id}` }, category.name), el("span", { class: "count-label" }, String(items.length))), el("p", {}, category.description)),
-        el("div", { class: "integration-grid" }, items.map(integrationCard))));
-    }
+    groups.append(el('div',{class:'integration-grid'},matches.map(integrationCard)));
     if (!matches.length) groups.append(el("div", { class: "empty-card" }, el("h2", {}, integrations.length ? "No matching integrations" : "A little room to grow"), el("p", {}, integrations.length ? "Try another search or filter." : "Installed integrations will appear here, ready for you to configure."), integrations.length ? button("Reset filters", () => { search.value = ""; state.integrationSearch = ""; state.integrationFilter = "all"; renderGroups(); }, "quiet compact") : null));
   };
   const filters = el("div", { class: "catalog-filters", role: "group", "aria-label": "Filter integrations" }, filterItems.map(([value, label]) => {
@@ -1438,9 +1428,9 @@ function renderIntegrations(main) {
   }));
   search.addEventListener("input", () => { state.integrationSearch = search.value; renderGroups(); });
   main.replaceChildren(el("section", { class: "page integrations-page" },
-    pageHeading("MAKE IT YOURS", "Integration center", "Add abilities to Carvis. HA means Home Assistant — the server that connects your home devices."),
+    pageHeading("MAKE IT YOURS", "Integration center", "Expand your smart home controller with voice, visual control, memory, and more."),
     el("div", { class: "integration-overview" }, el("div", {}, el("span", { class: "overview-number" }, String(enabled)), el("span", { class: "overview-label" }, "integrations enabled")),
-      el("p", {}, enabled ? "Your enabled integrations add tools and context to Carvis. Manage their setup, controls, and activity here." : "Start with a conversation. Enable an integration whenever you’re ready for more."), el("span", { class: "overview-total" }, `${integrations.length} available`)),
+      el("p", {}, enabled ? "Your enabled integrations add tools and context to Carvis. Manage their setup, controls, and activity here." : "Your home is connected. Add the abilities you want to use."), el("span", { class: "overview-total" }, `${integrations.length} available`)),
     el("div", { class: "catalog-toolbar" }, filters, el("div", { class: "catalog-search" }, icon("search"), search)), resultCount, groups,
     el("div", { class: "integration-banner" }, icon("shield"), el("div", {}, el("h3", {}, "A capable assistant. Clear boundaries."), el("p", {}, "Integrations start disabled. You choose the connections, visible devices, and actions that need your confirmation."))),
     el("details", { class: "integration-help" }, el("summary", {}, "How does Carvis grow?"), el("p", {}, "New abilities arrive through integrations. Each has its own setup, controls, and permissions. Your conversations, personality, and memory stay in one place."))));
@@ -1462,22 +1452,21 @@ async function renderIntegrationDetail(main, id, section, version) {
     catch(error){enabledToggle.checked=integration.enabled;formNotice(toggleFeedback,errorText(error));}
     finally{enabledToggle.disabled=false;}
   });
-  const category = integrationCategories.find(c => c.id === integrationCategory(integration));
   main.replaceChildren(el("section", {class:"page integration-detail"},
     button("All integrations", () => navigate("integrations"), "quiet compact", "arrow"),
-    pageHeading(category.name.toUpperCase(), integration.name, integration.description), toggleBar,
+    pageHeading("INTEGRATION", integration.name, integration.description), toggleBar,
     el("nav", {class:"integration-detail-tabs", "aria-label": `${integration.name} sections`}, labels.map(([key,label]) => el("a", {href:`#integrations/${id}/${key}`,class:`button quiet${section===key?' active':''}`,"aria-current":section===key?"page":null}, label))), body));
   if (section === 'settings') { configureIntegration(integration, body); return; }
   if (section === 'overview') {
     const dependencies=integrationDependencies(integration);
     const missingDependencies=dependencies.filter(d=>!d.optional&&!d.enabled);
-    if(missingDependencies.length)body.append(el('section',{class:'control-card'},el('h2',{},'Set up these first'),...missingDependencies.map(d=>el('p',{},el('a',{href:`#integrations/${d.id}`},d.name),' is required before you can enable this integration.'))));
+    if(missingDependencies.length)body.append(el('section',{class:'control-card'},el('h2',{},'Set up these first'),...missingDependencies.map(d=>el('p',{},el('a',{href:d.id==='home-assistant'?'#settings/home-assistant':`#integrations/${d.id}`},d.name),' is required before you can enable this integration.'))));
     const mainControls=el('section',{class:'integration-main-controls'});
     if(integration.enabled && !integrationControlsMissing(integration).length && controls?.module)body.append(el('h2',{},'Quick controls'),mainControls);
     const setup=el('section',{class:'integration-inline-setup'});
     body.append(el('h2',{},integration.enabled?'Connection & preferences':'Set up your integration'),setup);
     configureIntegration(integration,setup,{inline:true});
-    body.append(el('details',{class:'integration-help'},el('summary',{},'Setup guide & requirements'),el('p',{},integration.homeAssistant?.note || category.description),el('ol',{class:'setup-steps'},(integration.setupSteps||[]).map(step=>el('li',{},step)))));
+    body.append(el('details',{class:'integration-help'},el('summary',{},'Setup guide & requirements'),el('p',{},'Home Assistant is configured centrally in Settings.'),el('ol',{class:'setup-steps'},(integration.setupSteps||[]).map(step=>el('li',{},step)))));
     if(!integration.enabled || integrationControlsMissing(integration).length || !controls?.module)return;
     body=mainControls;section='controls';
   }
@@ -1505,7 +1494,7 @@ function integrationFieldGroup(integration, definition) {
   if(['voice__inputDevice','voice__inputMuted','speech__outputMode','speech__localDevice','speech__mediaPlayer'].includes(definition.key))return {id:'connection',label:'Audio devices',description:'Devices on the Carvis server, plus your enabled integrations.'};
   const supplied = definition.group;
   const groupId = value => String(value).replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  const names = { carvis: "Assistant behavior", tools: "Tool execution", ollama: "Local models", models: "Model roles", voice: "Conversation", stt: "Speech recognition", liveVoice: "Live voice", speech: "Speech & speakers", classifier: "Proactive decisions", sessions: "Activity sessions", memory: "Memory & patterns", search: "Search provider", atlas: "Project connection", mac: "Desktop connection", physicalCarvis: "Device connection", agent: "Device behavior", glasses: "Display & gestures" };
+  const names = { carvis: "Assistant behavior", tools: "Tool execution", ollama: "Local models", models: "Model roles", voice: "Conversation", stt: "Speech recognition", liveVoice: "Live voice", speech: "Speech & speakers", classifier: "Proactive decisions", sessions: "Activity sessions", memory: "Continuity Memory", search: "Search provider", atlas: "Project connection", mac: "Desktop connection", physicalCarvis: "Device connection", agent: "Device behavior", glasses: "Display & gestures" };
   if (supplied && typeof supplied === "object") return { id: groupId(supplied.id || supplied.label || "general"), label: supplied.label || supplied.title || names[supplied.id] || supplied.id || "General", description: supplied.description || supplied.help || definition.groupHelp || "" };
   if (typeof supplied === "string" && supplied.trim()) return { id: groupId(supplied), label: names[supplied] || supplied.replace(/^./, letter => letter.toUpperCase()), description: definition.groupHelp || "" };
   const key = definition.key;
@@ -1553,7 +1542,7 @@ function integrationFieldValue(definition, control) {
   if (definition.type === "entities") return [...new Set(value.split(/[\s,]+/).filter(Boolean))];
   return value;
 }
-function configureIntegration(integration, host, {inline = false} = {}) {
+function configureIntegration(integration, host, {inline = false, onboarding = false} = {}) {
   if (!host) { navigate(`integrations/${integration.id}/settings`); return; }
   const values = {}, cfg = integration.config || {}, feedback = el("div"), groups = new Map();
   const dependencies = integrationDependencies(integration), requiredMissing = dependencies.filter(item => !item.optional && !item.enabled);
@@ -1562,7 +1551,7 @@ function configureIntegration(integration, host, {inline = false} = {}) {
   const permissionText = (integration.permissions || []).map(permission => el("li", {}, icon("check"), typeof permission === "string" ? permission : permission.description || permission.name || "Integration access"));
   if (requiredMissing.length) form.append(el("div", { class: `integration-dependencies${requiredMissing.length ? " attention" : ""}` }, el("h3", {}, "Works with"), dependencies.map(item => el("div", { class: "dependency-row" }, el("div", {}, el("strong", {}, item.name), el("span", {}, item.optional ? "Optional connection" : "Required integration")), el("span", { class: `dependency-state${!item.enabled ? " off" : ""}` }, item.enabled ? "Enabled" : item.integration ? "Disabled" : "Not installed"))), requiredMissing.length ? el("p", {}, "Set up and enable the required integrations first. You can still save this integration’s settings while it is disabled.") : null));
   const permissions = el("details", { class: "integration-permissions" }, el("summary", {}, `Access & abilities${permissionText.length ? ` · ${permissionText.length}` : ""}`), permissionText.length ? el("ul", {}, permissionText) : el("p", { class: "small muted" }, "No extra permissions declared."));
-  if (dependencies.length && !requiredMissing.length) form.append(el("p",{class:"dependency-ready small muted"},"Connected with ", dependencies.map((item,index)=>el("span",{},index?", ":"",el("a",{href:`#integrations/${item.id}`},item.name)))));
+  if (dependencies.length && !requiredMissing.length) form.append(el("p",{class:"dependency-ready small muted"},"Connected with ", dependencies.map((item,index)=>el("span",{},index?", ":"",el("a",{href:item.id==='home-assistant'?'#settings/home-assistant':`#integrations/${item.id}`},item.name)))));
   const tabs = el("div", { class: "integration-settings-tabs", role: "tablist", "aria-label": "Settings sections" }), panels = el("div", { class: "integration-settings-panels" });
   let activeGroup = null;
   const activate = (id, focus = false) => {
@@ -1620,9 +1609,9 @@ function configureIntegration(integration, host, {inline = false} = {}) {
       control=el('select',{name:f.key},el('option',{value:''},f.key==='cameraEntity'?'Use controller’s existing feed':f.key==='remoteEntity'?'Choose a remote':'No media player'),...(value?[el('option',{value,selected:true},`${value} (saved)`)]:[]));
       queueMicrotask(async()=>{
         try{
-          const ha=state.data.integrations.find(i=>i.id==='home-assistant');
+          const ha=state.data.homeAssistant;
           if(!ha?.enabled)throw Error('Enable Home Assistant to discover TV devices.');
-          const result=await api('/api/integrations/home-assistant/entities');
+          const result=await api('/api/home-assistant/entities');
           const domain=f.key==='cameraEntity'?'camera.':f.key==='remoteEntity'?'remote.':'media_player.';
           const devices=result.entities.filter(e=>e.entity_id.startsWith(domain));
           const current=control.value;
@@ -1639,9 +1628,9 @@ function configureIntegration(integration, host, {inline = false} = {}) {
         try{
           let options;
           if(f.key==='speech__mediaPlayer'){
-            const ha=state.data.integrations.find(i=>i.id==='home-assistant');
+            const ha=state.data.homeAssistant;
             if(!ha?.enabled)throw Error('Enable Home Assistant to choose an HA speaker.');
-            const result=await api('/api/integrations/home-assistant/entities');
+            const result=await api('/api/home-assistant/entities');
             options=result.entities.filter(e=>e.entity_id.startsWith('media_player.')&&ha.config?.controlled?.includes(e.entity_id)).map(e=>({value:e.entity_id,label:e.name || e.entity_id}));
           }else{
             const result=await api(`/api/integrations/${integration.id}/audio-devices`);
@@ -1701,9 +1690,9 @@ function configureIntegration(integration, host, {inline = false} = {}) {
     for (const [,g] of ordered) { tabs.append(g.tab); panels.append(g.panel); const advanced=g.panel.querySelector('.advanced-settings'); if(advanced)g.panel.append(advanced); }
     if(inline){
       panels.classList.add('integration-settings-inline');
-      for(const [,g] of ordered){
+      for(const [groupId,g] of ordered){
         g.panel.hidden=false;g.panel.removeAttribute('role');g.panel.removeAttribute('aria-labelledby');
-        if(!g.panel.querySelector(':scope > .field') && g.panel.querySelector('.advanced-settings')){
+        if((onboarding&&!['connection','devices'].includes(groupId)) || (!g.panel.querySelector(':scope > .field') && g.panel.querySelector('.advanced-settings'))){
           const folded=el('details',{class:'integration-advanced-group'},el('summary',{},g.metadata.label));
           g.panel.before(folded);folded.append(g.panel);
         }
@@ -1727,7 +1716,7 @@ function configureIntegration(integration, host, {inline = false} = {}) {
   const save = el("button", { type: "submit", class: "button primary" }, "Save changes");
   const test = button("Test saved connection", async () => {
     test.disabled = true; feedback.replaceChildren();
-    try { const result = await api(`/api/integrations/${encodeURIComponent(integration.id)}/test`, { method: "POST" }); formNotice(feedback, result.message || result.error || (result.success ? "Connection successful." : "Could not connect."), result.success); }
+    try { const result = await api(`${connectionPath(integration.id)}/test`, { method: "POST" }); formNotice(feedback, result.message || result.error || (result.success ? "Connection successful." : "Could not connect."), result.success); }
     catch (error) { formNotice(feedback, errorText(error)); } finally { test.disabled = false; }
   }, "", "refresh");
   const saveStatus=el('span',{class:'small muted',role:'status','aria-live':'polite'},'Changes save automatically');
@@ -1745,13 +1734,14 @@ function configureIntegration(integration, host, {inline = false} = {}) {
     if(!Object.keys(patch).length){saveStatus.textContent='All changes saved';return;}
     saving=true;save.disabled=true;saveStatus.textContent='Saving…';feedback.replaceChildren();
     try {
-      await api(`/api/integrations/${encodeURIComponent(integration.id)}`,{method:'PUT',body:{config:patch}});
+      await api(connectionPath(integration.id),{method:'PUT',body:{config:patch}});
       Object.assign(baseline,patch);
       for(const [key,value] of Object.entries(patch)){
         const entry=values[key];
         if(entry?.field.type==='password' && value && entry.control.value===value){entry.control.value='';entry.control.required=false;entry.control.placeholder='Saved · leave blank to keep';baseline[key]='';}
       }
       await refreshState();saveStatus.textContent='Saved';
+      if(entitySection && ('baseUrl' in patch || 'token' in patch))entitySection.reload();
       if(Object.keys(patch).some(key=>/provider|engine|baseUrl|BaseUrl|Key|key/.test(key)))for(const entry of Object.values(values))entry.control.loadModels?.();
     }catch(error){saveStatus.textContent='Not saved — retry';formNotice(feedback,errorText(error));}
     finally {saving=false;save.disabled=false;if(queued){queued=false;void persist();}}
@@ -1813,19 +1803,20 @@ function makeEntitySelector(config, allowedTypes = () => config.agent__allowedDo
     }
     list.append(table);
   }
-  const load=button('Load entities',async()=>{
+  const load=button('Refresh entities',async()=>{
     load.disabled=true;feedback.replaceChildren();
     try{
-      const result=await api('/api/integrations/home-assistant/entities');entities=(result.entities || []).map(e=>({...e,domain:e.domain || e.entity_id.split('.')[0]}));
+      const result=await api('/api/home-assistant/entities');entities=(result.entities || []).map(e=>({...e,domain:e.domain || e.entity_id.split('.')[0]}));
       const known=new Set(entities.map(e=>e.entity_id));for(const id of observed)if(!known.has(id))entities.push({entity_id:id,name:id,domain:id.split('.')[0],state:'unavailable'});
-      loaded=true;const current=type.value;type.replaceChildren(el('option',{value:''},'All types'),...[...new Set(entities.map(e=>e.domain))].sort().map(value=>el('option',{value},label(value))));type.value=current;
+      loaded=true;load.hidden=false;const current=type.value;type.replaceChildren(el('option',{value:''},'All types'),...[...new Set(entities.map(e=>e.domain))].sort().map(value=>el('option',{value},label(value))));type.value=current;
       if(room!=='*' && room!=='' && !entities.some(e=>e.area_id===room))room='*';
       if(result.areaWarning)formNotice(feedback,result.areaWarning);load.textContent='Refresh entities';render();
     }catch(error){formNotice(feedback,errorText(error));}finally{load.disabled=false;}
   },'compact','refresh');
+  load.hidden=true;
   search.addEventListener('input',render);type.addEventListener('change',render);only.addEventListener('change',render);showOther.addEventListener('change',render);render();
   if (config.baseUrl && (config.hasToken || config.token)) queueMicrotask(() => load.click());
-  return {node:el('section',{class:'entity-section entity-manager'},el('div',{class:'entity-manager-title'},icon('home'),el('div',{},el('h3',{},'Entity management'),el('p',{class:'small muted'},'Choose what Carvis can see and control. Changes save automatically.')),load),rooms,el('div',{class:'entity-filterbar'},search,type,el('label',{class:'check-label'},only,'Observed entities only'),el('label',{class:'check-label'},showOther,'Show other types (observe only)')),feedback,el('div',{class:'entity-table-heading'},el('div',{},heading,count),el('div',{class:'action-row'},selectAll,bulk)),list,el('p',{class:'small muted'},'Rooms come from Home Assistant. State is a read-only snapshot. Unobserved entities remain hidden from Carvis. Guards keep the existing Auto, Standard, and Require confirmation behavior.')),refresh:render,value:()=>({observed:[...observed],controlled:[...controlled],guards})};
+  return {node:el('section',{class:'entity-section entity-manager'},el('div',{class:'entity-manager-title'},icon('home'),el('div',{},el('h3',{},'Entity management'),el('p',{class:'small muted'},'Choose what Carvis can see and control. Changes save automatically.')),load),rooms,el('div',{class:'entity-filterbar'},search,type,el('label',{class:'check-label'},only,'Observed entities only'),el('label',{class:'check-label'},showOther,'Show other types (observe only)')),feedback,el('div',{class:'entity-table-heading'},el('div',{},heading,count),el('div',{class:'action-row'},selectAll,bulk)),list,el('p',{class:'small muted'},'Rooms come from Home Assistant. State is a read-only snapshot. Unobserved entities remain hidden from Carvis. Guards keep the existing Auto, Standard, and Require confirmation behavior.')),refresh:render,reload:()=>load.click(),value:()=>({observed:[...observed],controlled:[...controlled],guards})};
 }
 
 function renderGlobalKeys() {
@@ -1907,7 +1898,7 @@ function renderModelRouter() {
       form.addEventListener('submit',async event=>{
         event.preventDefault();save.disabled=true;
         try {
-          await api(`/api/integrations/${encodeURIComponent(integration.id)}`,{method:'PUT',body:{config:Object.assign({},...updates.map(read=>read()))}});
+          await api(connectionPath(integration.id),{method:'PUT',body:{config:Object.assign({},...updates.map(read=>read()))}});
           await refreshState();integration.config=state.data.integrations.find(i=>i.id===integration.id)?.config || integration.config;updateSummary();formNotice(feedback,'Model routing saved.',true);
         }catch(error){formNotice(feedback,errorText(error));}finally{save.disabled=false;}
       });
@@ -2189,12 +2180,12 @@ function renderSettings(main) {
     el(
       "p",
       {},
-      "Let Carvis remember preferences and useful context. Set up and manage this feature in the Memory & patterns integration.",
+      "Let Carvis remember preferences and useful context. Set up and manage this feature in the Continuity Memory integration.",
     ),
     el(
       "a",
       { class: "button", href: "#integrations/learned-memory/settings" },
-      "Enable Memory Integration",
+      "Set up Continuity Memory",
       icon("arrow"),
     ),
   );
@@ -2203,11 +2194,11 @@ function renderSettings(main) {
       "section",
       { class: "page" },
       pageHeading(
-        "YOUR SPACE, YOUR PREFERENCES",
+        "YOUR HOME, YOUR PREFERENCES",
         "Settle in.",
         "Choose how Carvis thinks, how it talks, and what it remembers about you.",
       ),
-      el("div", { class: "settings-grid" }, profileForm, modelForm, renderGlobalKeys(), renderModelRouter(), memoryCard),
+      el("div", { class: "settings-grid" }, el('section',{class:'settings-card full'},el('h2',{},'Home Assistant'),el('p',{},state.data.homeAssistant?.config?.homeName || 'Your smart home'),el('a',{class:'button',href:'#settings/home-assistant'},'Home connection & entities')), profileForm, modelForm, renderGlobalKeys(), renderModelRouter(), memoryCard),
     ),
   );
 }
@@ -2237,4 +2228,34 @@ function renderVoiceConversations(main){
   };
   void render();const timer=setInterval(()=>void render(),2000);
   state.integrationCleanup=()=>{disposed=true;clearInterval(timer);};
+}
+
+function renderHomeSettings(main,onboarding=false){
+ const home=state.data.homeAssistant;
+ if(!home){main.append(el('p',{},'Home settings are unavailable.'));return;}
+ const content=el('div'),feedback=el('div');
+ main.replaceChildren(el('section',{class:'page'},pageHeading(onboarding?'WELCOME HOME':'HOME SETTINGS',onboarding?'Connect your smart home':'Home Assistant',onboarding?'Name your home, connect Home Assistant, then choose the entities Carvis may see and control. Your token is stored privately.':'Manage your connection, entities, and device guards.'),content,feedback));
+ configureIntegration(home,content,{inline:true,onboarding});
+ if(onboarding)content.after(button('Finish home setup',async()=>{
+  try{
+   const status=content.querySelector('.modal-footer [role="status"]');
+   if(status && /saving|unsaved|not saved/i.test(status.textContent))throw Error('Wait for your changes to save before finishing setup.');
+   await api('/api/home-assistant/complete',{method:'POST',body:{}});await refreshState();navigate('home');
+  }catch(error){formNotice(feedback,errorText(error));}
+ },'primary'));
+}
+function renderHome(main){
+ const home=state.data.homeAssistant, cfg=home?.config || {};
+ const devices=el('div',{class:'home-device-grid'}),feedback=el('p',{class:'muted',role:'status'});
+ main.replaceChildren(el('section',{class:'page'},pageHeading('YOUR SMART HOME',cfg.homeName || 'Home','Check your devices, ask Carvis to take care of something, or expand what your home can do.'),
+ el('div',{class:'action-row'},el('a',{class:'button primary',href:'#chat'},'Ask Carvis'),el('a',{class:'button',href:'#settings/home-assistant'},'Manage home & entities'),el('a',{class:'button quiet',href:'#integrations'},'Integrations')),feedback,devices));
+ let stopped=false,busy=false;
+ const refresh=async()=>{if(stopped||busy)return;busy=true;try{
+  const data=await api('/api/home-assistant/entities');if(stopped)return;
+  const observed=new Set([...(cfg.observed || []),...(cfg.controlled || [])]);
+  const selected=data.entities.filter(e=>observed.has(e.entity_id));
+  feedback.textContent=`${selected.length} selected devices · ${cfg.dryRun!==false?'Dry run is on':'Live control enabled'}`;
+  devices.replaceChildren(...selected.map(e=>el('article',{class:'control-card'},el('h3',{},e.name || e.entity_id),el('p',{},`${e.state || 'Unknown'}${e.unit?' '+e.unit:''}`),el('small',{class:'muted'},e.area_name || e.entity_id))));
+ }catch(error){if(!stopped)feedback.textContent=errorText(error);}finally{busy=false;}};
+ void refresh();const timer=setInterval(()=>void refresh(),15000);state.integrationCleanup=()=>{stopped=true;clearInterval(timer);};
 }

@@ -38,7 +38,7 @@ export function validateConfig(config = {}) {
 }
 function home(ctx) {
   if (!ctx.registry?.getConfig)
-    throw Error("Enable and configure the Home Assistant integration first.");
+    throw Error("Complete your home setup in Settings → Home Assistant.");
   const cfg = ctx.registry.getConfig("home-assistant");
   return { ...ctx, config: validateHA(cfg) };
 }
@@ -212,8 +212,8 @@ async function authorize(
   if (!id || !allowed.includes(id) || !selected.includes(id))
     throw Error(
       control
-        ? "Select this TV for control in Home Assistant integration settings."
-        : "Select this TV for observation in Home Assistant integration settings.",
+        ? "Select this TV for control in Settings → Home Assistant."
+        : "Select this TV for observation in Settings → Home Assistant.",
     );
   const state = await readState(ha, id, control);
   if (control && ["unavailable", "unknown"].includes(state.state))
@@ -285,7 +285,7 @@ export default {
   description:
     "Delegate visual TV tasks to your AI controller and steer the same task with context.",
   permissions: [
-    "Use the enabled Home Assistant integration for authenticated add-on access",
+    "Use Carvis’s core Home Assistant connection for authenticated add-on access",
     "Control only selected TV entities",
     "Read controller task status",
   ],
@@ -512,7 +512,7 @@ export default {
     try {
       selected = home(ctx).config.observed;
     } catch {
-      return "TV AI Controller requires the enabled Home Assistant integration before it can be used.";
+      return "Complete Carvis’s home setup before using TV AI Controller.";
     }
     const targets = [cfg.mediaPlayerEntity, cfg.remoteEntity].filter((id) =>
       selected.includes(id),

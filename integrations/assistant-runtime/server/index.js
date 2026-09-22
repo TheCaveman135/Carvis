@@ -1,3 +1,4 @@
+import {ContinuityMemory,ContinuityPatterns} from './continuity-memory.js';
 import {voiceReply} from './voice-events.js';
 import { HostMicrophone, speakLocal, stopLocalPlayback } from './host-audio.js';
 import {IntegrationBridge} from './integration-bridge.js';
@@ -98,8 +99,9 @@ const sessions = new Sessions({ getConfig: loadConfig, bus, worldState, atlas })
 
 // Before Carvis: the prompt reads from it on every turn, and the tools need it
 // at registration below.
-const memory = new MemoryStore(loadConfig);
-memory.start({rulesOnly: !enabled(cfg,'learned-memory')});
+const legacyMemory = new MemoryStore(loadConfig);
+legacyMemory.start();
+const memory = new ContinuityMemory({directory:path.join(ROOT,'continuity-memory'),legacy:{all:()=>[...legacyMemory.all(),...(cfg.continuityImport || [])],state:()=>legacyMemory.state()}});
 
 /**
  * House rules used to be one opaque newline-joined string at
@@ -126,7 +128,8 @@ try {
   log('error', `Could not move house rules into memory: ${err.message}`);
 }
 
-const patterns = new PatternLearner({getConfig:loadConfig,ha,worldState,feed,path:path.join(ROOT,'patterns.json')});
+const patterns = new ContinuityPatterns({memory,getConfig:loadConfig,ha,worldState,feed,path:path.join(ROOT,'continuity-notifications.json')});
+patterns.migrate(path.join(ROOT,'patterns.json'));
 const preferenceLearner = new PreferenceLearner({getConfig: loadConfig, gateway});
 carvis = new Carvis({
   patterns: enabled(cfg,'learned-memory') ? patterns : null,
@@ -647,7 +650,9 @@ const routes = {
 
   /* ── Memory — the owner's own view onto what memory.remember() writes ── */
   'GET /api/memories': async (req, res) =>
-    sendJson(res, 200, { ok: true, memories: memory.all(), state: memory.state(), patterns: patterns.list() }),
+    sendJson(res, 200, { ok: true, memories: memory.all(), state: memory.state(), patterns: patterns.list(), continuity: {reflections:memory.dmr.listReflections?.() || []} }),
+
+  'GET /api/memories/context': async (req,res)=>{const query=new URL(req.url,'http://localhost').searchParams.get('q') || '';sendJson(res,200,{ok:true,context:memory.promptSections(query.slice(0,2000))});},
 
   'POST /api/patterns/dismiss': async (req, res) => {
     const {id} = await readBody(req);
@@ -1185,7 +1190,7 @@ server.listen(0,'127.0.0.1',()=>process.send?.({type:'ready',port:server.address
 let stopping=false;
 function shutdown(code=0) {
   if(stopping)return;stopping=true;
-  hostMicrophone?.stop();stopLocalPlayback();integrationBridge.close();automations.stop();sessions.stop();ha.disconnect();stt.stop();hud.stop?.();
+  memory.close();hostMicrophone?.stop();stopLocalPlayback();integrationBridge.close();automations.stop();sessions.stop();ha.disconnect();stt.stop();hud.stop?.();
   for(const timer of ha.appleTv?.monitors?.values() || [])clearTimeout(timer);
   server.close(()=>process.exit(code));setTimeout(()=>process.exit(code),1000).unref();
 }

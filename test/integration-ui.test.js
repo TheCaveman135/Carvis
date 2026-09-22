@@ -7,10 +7,10 @@ import appleTv from '../server/integrations/apple-tv.js';
 const source=readFileSync(new URL('../web/app.js',import.meta.url),'utf8');
 function helpers(integrations=[]){
   const context=vm.createContext({URL,state:{data:{integrations}},window:{location:{origin:'https://carvis.example'}}});
-  const metadata=source.slice(source.indexOf('const integrationCategories ='),source.indexOf('function integrationCard('));
+  const metadata=source.slice(source.indexOf('function integrationDependencies('),source.indexOf('function integrationCard('));
   const groups=source.slice(source.indexOf('function integrationFieldGroup('),source.indexOf('function integrationFieldValue('));
   const values=source.slice(source.indexOf('function integrationFieldValue('),source.indexOf('function configureIntegration('));
-  vm.runInContext(metadata+'\n'+groups+'\n'+values+'\nglobalThis.ui={integrationCategory,integrationDependencies,integrationPanelUrl,integrationControlsMissing,integrationMatchesSearch,integrationFieldGroup,integrationStatus,integrationFieldValue};',context);
+  vm.runInContext(metadata+'\n'+groups+'\n'+values+'\nglobalThis.ui={integrationDependencies,integrationPanelUrl,integrationControlsMissing,integrationMatchesSearch,integrationFieldGroup,integrationStatus,integrationFieldValue};',context);
   return context.ui;
 }
 
@@ -21,13 +21,12 @@ test('control modules accept only this installation origin and reject embedded c
   for(const unsafe of ['https://another.example/panel','//another.example/panel','javascript:alert(1)','data:text/html,hi','http://carvis.example/panel','https://owner:secret@carvis.example/panel','https://carvis.example:8443/panel',''])assert.equal(ui.integrationPanelUrl(unsafe),null,unsafe);
 });
 
-test('catalog groups reflect Home Assistant requirements without conflating other dependencies',()=>{
-  const ui=helpers();
-  assert.equal(ui.integrationCategory({id:'apple-tv',homeAssistant:{requirement:'required'}}),'required');
-  assert.equal(ui.integrationCategory({id:'cameras',homeAssistant:{requirement:'recommended'}}),'recommended');
-  assert.equal(ui.integrationCategory({id:'voice',dependsOn:['assistant-engine']}),'not-required');
-  assert.equal(ui.integrationCategory({id:'new-service',dependsOn:['home-assistant']}),'required');
-  assert.equal(ui.integrationCategory({id:'new-service'}),'not-required');
+test('integration dependencies use the core Home Assistant connection',()=>{
+  const context=vm.createContext({state:{data:{integrations:[],homeAssistant:{id:'home-assistant',name:'Home Assistant',enabled:true}}}});
+  const code=source.slice(source.indexOf('function integrationDependencies('),source.indexOf('function integrationPanelUrl('));
+  vm.runInContext(code+";globalThis.dependencies=integrationDependencies({dependsOn:['home-assistant']});",context);
+  assert.equal(context.dependencies[0].enabled,true);
+  assert.equal(context.dependencies[0].name,'Home Assistant');
 });
 
 test('enabled state stays distinct from connectivity and dependency readiness',()=>{

@@ -107,6 +107,7 @@ export function projectRuntimeConfig(store) {
   for (const id of ['apple-tv', 'proactivity']) cfg.integrations[id] &&= cfg.integrations['home-assistant'];
   const config = id => store.config.integrations[id]?.config || {};
   const ha = config('home-assistant');
+  cfg.homeName = ha.homeName || '';
   cfg.ha = { url: ha.baseUrl || '', token: ha.token || '', allowInsecureTls: ha.allowInsecureTls === true };
   const orphanGuards = Object.fromEntries(Object.entries(saved.entities?.guards || {}).filter(([id]) => !(ha.controlled || []).includes(id)));
   cfg.entities = { observed: ha.observed || [], controlled: ha.controlled || [], guards: { ...orphanGuards, ...ha.guards } };
@@ -115,6 +116,7 @@ export function projectRuntimeConfig(store) {
   const tv = config('apple-tv');
   cfg.appleTv = { ...cfg.appleTv, ...tv, mediaPlayer: tv.mediaPlayerEntity || '', remoteEntity: tv.remoteEntity || '' };
   cfg.glasses.token = config('even-realities').pairingToken || cfg.glasses.token || '';
+  cfg.continuityImport=(store.data?.memory || []).map(m=>({id:'core:'+m.id,text:m.text,kind:'fact',source:'owner',ts:m.createdAt || m.ts}));
   cfg.auth = structuredClone(store.config.auth);
   cfg.carvis.personality = store.config.profile.personality;
   const primary = store.config.model;

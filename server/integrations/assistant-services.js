@@ -9,7 +9,7 @@ const descriptions = {
   speech: ['Speech output', 'Read replies through your configured phone, Home Assistant speaker, or physical Carvis.', 'Voice & display'],
   protocols: ['Protocols, timers & alarms', 'Create and manage deterministic routines, timers, alarms, variables, and their execution history.', 'Intelligence & routines'],
   proactivity: ['Proactivity & sessions', 'Notice meaningful changes, respect your interruption settings, and track activity sessions.', 'Intelligence & routines'],
-  'learned-memory': ['Memory & patterns', 'Retain facts, preferences, owner rules, and tentative patterns with recall and dismissal controls.', 'Intelligence & routines'],
+  'learned-memory': ['Continuity Memory', 'Retain facts, preferences, owner rules, and tentative patterns with recall and dismissal controls.', 'Intelligence & routines'],
   cameras: ['Cameras & images', 'Inspect selected cameras or uploaded images with an objective and your room context.', 'Home & devices'],
   'web-search': ['Web search', 'Look up current information using your configured search provider.', 'Connected services'],
   atlas: ['Project Atlas', 'Bring project context, captures, and reviewed task workflows into Carvis.', 'Connected services'],
@@ -114,7 +114,7 @@ export function registerAssistantServices(registry) {
         const execute = tool.execute;
         return { ...tool, async execute(args, options) {
           const domains = ctx.config.agent__allowedDomains;
-          if (Array.isArray(domains) && !domains.includes(args.entity_id?.split('.')[0])) throw Error('This device domain is not permitted in Home Assistant Integration settings.');
+          if (Array.isArray(domains) && !domains.includes(args.entity_id?.split('.')[0])) throw Error('This device domain is not permitted in Settings → Home Assistant.');
           if (runtime.enabled()) return runtime.call('command', { arguments: args, context: { triggerType: 'user_text', reason: options.userText || options.reason || '', confirmed: options.confirmed === true } }, options);
           return execute(args, options);
         } };
