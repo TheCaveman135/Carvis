@@ -11,7 +11,6 @@ export const CATALOG = {
   voice: ['Voice input & chat', ['Choose a microphone on the Carvis server or paired Even glasses.', 'Add your speech recognition key. Deepgram transcribes requests for your Carvis model.', 'Enable Spoken replies and choose a speaker to hear responses.']],
   'learned-memory': ['Continuity Memory', ['Enable Advanced assistant.', 'Review remembered facts, preferences, and changing details. Existing memories are imported automatically.', 'Explore what Carvis recalls for a question, inspect learned routines, or forget an entry.']],
   'web-search': ['Search the web', ['Choose your search provider and enter its API key.', 'Ask Carvis for current information.']],
-  atlas: ['Project Atlas connection', ['Enter your Atlas server address and credentials.', 'Choose which project context to share with Carvis.']],
   desktop: ['Computer agent connection', ['Configure your desktop agent and its connection.', 'Use this page to send a request and check its delivery.']],
   'physical-carvis': ['Carvis hardware', ['Pair your device with a private token.', 'Check device contact and command acknowledgements here.']],
 };
@@ -27,7 +26,6 @@ const DESCRIPTIONS = {
   voice: 'Talk to Carvis instead of typing. Deepgram turns microphone audio into requests for your normal Carvis model. Spoken replies controls audio playback separately.',
   'learned-memory': 'Keep context across time: facts, preferences, changing details, and recurring routines. Review evidence, conflicting memories, and history; forget anything you choose.',
   'web-search': 'Let Carvis look up current information online when answering you. Requires a supported search provider and API key.',
-  atlas: 'Connect an existing Project Atlas server to share project context and save notes from Carvis. Only needed if you already use Project Atlas.',
   desktop: 'Send requests to a separate agent running on your computer and check their delivery. Requires a compatible desktop agent; this does not install one.',
   'physical-carvis': 'Connect a physical Carvis device, such as an ESP32-S3 unit, for device status, commands, and audio. Only needed if you have the hardware.',
 };

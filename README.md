@@ -42,7 +42,6 @@ No API keys, home configuration, transcripts, personal memories, or device crede
 | Continuity Memory | Facts, preferences, owner rules, recall, and tentative patterns | [Guide](docs/integrations-assistant.md#intelligence-and-routines) |
 | Cameras & images | Objective-driven camera/image interpretation with room context | [Guide](docs/integrations-assistant.md#home-and-connected-services) |
 | Web search | Grounded current-information retrieval | [Guide](docs/integrations-assistant.md#home-and-connected-services) |
-| Project Atlas | Project context, captures, tasks, and existing review workflows | [Guide](docs/integrations-assistant.md#home-and-connected-services) |
 | Desktop bridge | Desktop agent queue/push delivery and acknowledgements | [Guide](docs/integrations-assistant.md#home-and-connected-services) |
 | Physical Carvis | Scoped device pairing, dock status, speech commands, and acknowledgements | [Guide](docs/integrations-assistant.md#voice-and-display) |
 

@@ -1,6 +1,6 @@
 /** Feature policy is enforced in code, before an adapter or tool is reached. */
-export const FEATURE_IDS = ['assistant-engine', 'voice', 'speech', 'protocols', 'proactivity', 'learned-memory', 'cameras', 'home-assistant', 'apple-tv', 'even-realities', 'web-search', 'atlas', 'desktop', 'physical-carvis'];
-export function enabled(config, id) { const setting = config?.integrations?.[id]; return setting === true || setting?.enabled === true; }
+export const FEATURE_IDS = ['assistant-engine', 'voice', 'speech', 'protocols', 'proactivity', 'learned-memory', 'cameras', 'home-assistant', 'apple-tv', 'even-realities', 'web-search', 'desktop', 'physical-carvis'];
+export function enabled(config, id) { if (id === 'atlas') return false; const setting = config?.integrations?.[id]; return setting === true || setting?.enabled === true; }
 export const paused = () => process.env.CARVIS_RUNTIME_PAUSED === '1';
 export function toolFeature(name) {
   if (name.startsWith('ha.apple_tv.') || name === 'ha.media.navigate') return 'apple-tv';

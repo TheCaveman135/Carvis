@@ -254,7 +254,6 @@ export const DEFAULTS = {
     "apple-tv": false,
     "even-realities": false,
     "web-search": false,
-    "atlas": false,
     "desktop": false,
     "physical-carvis": false
   },

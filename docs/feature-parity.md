@@ -33,7 +33,6 @@ physical hardware checks are listed separately at the end.
 | Cameras and images | Selected cameras, uploaded images, a focused objective for the vision model, scene/landmark context supplied by the owner, and useful location descriptions. |
 | Even Realities | Existing phone/glasses connections, lifecycle recovery, microphone controls, blank idle display, configurable mute indicator, bottom replies, phone audio, interactive button/slider/dropdown widgets, numeric navigation, selection outlines, double-tap deselection, and menu clear action. History remains on the phone. |
 | Web search | Configurable search provider credentials and model; grounded current-information retrieval. |
-| Project Atlas | Configurable connections and credentials, project context, search, captures, tasks, and existing review/approval behavior. |
 | Desktop bridge | Configurable queue/push delivery, command acknowledgements, and desktop agent state. |
 | Physical Carvis | Device pairing, scoped credentials, status reports, command polling, acknowledgements, and voice support compatible with the physical device. |
 

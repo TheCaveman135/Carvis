@@ -92,3 +92,8 @@ test('TV grammar resolves configured entity IDs and honors navigation/reply pref
  assert.equal(tvCommand('turn Apple TV off',cfg,states).arguments.state,'off');
  cfg.appleTv.shortReplies=false;assert.equal(tvCommand('turn Apple TV off',cfg,states),null);
 });
+
+test('retired Atlas integration remains disabled even with legacy enabled settings',()=>{
+ const cfg=fixture();cfg.integrations.atlas=true;cfg.atlas.enabled=true;
+ assert.equal(enabled(cfg,'atlas'),false);assert.equal(toolEnabled(cfg,'atlas.capture'),false);assert.equal(effectiveConfig(cfg).atlas.enabled,false);
+});

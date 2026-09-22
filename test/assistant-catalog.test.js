@@ -13,7 +13,7 @@ async function fixture(t) {
  registerAssistantServices(registry);return registry;
 }
 test('bundled integrations share home setup and expose native management without HA categories',async t=>{
- const registry=await fixture(t),catalog=registry.list();assert.equal(catalog.length,14);
+ const registry=await fixture(t),catalog=registry.list();assert.equal(catalog.length,13);assert.equal(catalog.some(item=>item.id==='atlas'),false);
  for(const item of catalog){assert.equal(item.homeAssistant,undefined);assert(item.setupSteps.length);assert.equal(item.controls.module,'/integrations/assistant-engine/controls.js');assert.equal(item.workspaceUrl,undefined);assert.equal(item.workspaceDependsOn,undefined);}
  const byId=id=>catalog.find(i=>i.id===id);
  assert(byId('apple-tv').dependsOn.includes('home-assistant'));

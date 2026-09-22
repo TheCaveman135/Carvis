@@ -79,7 +79,6 @@ export async function mount(ui) {
       case 'speech': speech(snapshot); break;
       case 'proactivity': proactive(snapshot); break;
       case 'physical-carvis': physical(snapshot); break;
-      case 'atlas': atlas(snapshot); break;
       case 'desktop': desktop(snapshot); break;
       case 'web-search': content.append(card('Ask about current information','Search is available directly in chat.',askForm('What would you like to look up?','For example: What changed in this week’s technology news?','Search the web for: '))); break;
       default: content.append(card('Assistant activity','Manage voice, memory, routines, and devices from their own integration pages.',el('div',{class:'control-links'},ui.integrations.filter(i=>i.id!=='assistant-engine' && i.enabled).map(i=>el('a',{href:`#integrations/${i.id}/controls`,class:'button compact'},i.name)))),activity(snapshot));
@@ -237,10 +236,6 @@ export async function mount(ui) {
     content.append(card('Device status','Contact, queued commands, and acknowledgements from physical Carvis.',details('Current device state',snapshot.physicalCarvis)),card('Pair a device','Show the current pairing or generate a replacement. Keep the token private.',action('Show pairing details',async()=>{const pairing=await post('/api/physical-carvis/pair',{});feedback.replaceChildren(card('Device pairing','Copy these details into your device.',details('Pairing details',pairing)));}),action('Replace pairing token',async()=>{if(!window.confirm('Replace the pairing token? Existing devices will need the new token.'))return;const pairing=await post('/api/physical-carvis/pair',{regenerate:true});feedback.replaceChildren(card('New device pairing','Update your device with this private token.',details('Pairing details',pairing)));})));
   }
 
-  function atlas(snapshot) {
-    const title=input('title','','text'),text=el('textarea',{rows:4,required:true}),projectId=input('project','','text');
-    content.append(card('Project connection','Refresh the project context shared with Carvis.',action('Refresh projects',async()=>{await result(await post('/api/atlas/refresh',{}));await reload();}),details('Project status',snapshot.atlas)),card('Capture a note','Save a note to Project Atlas.',submitForm([field('Title',title),field('Note',text),field('Project ID (optional)',projectId)],'Save note',async()=>{await result(await post('/api/atlas/capture',{title:title.value,text:text.value,projectId:projectId.value || undefined}));text.value='';})));
-  }
   function desktop(snapshot) {
     const command=input('command','','text',{required:true,placeholder:'Describe the desktop task'}),detail=el('textarea',{rows:3});
     content.append(card('Desktop agent','Requests use the existing desktop bridge and its delivery policy.',submitForm([field('Request',command),field('Extra details',detail)],'Send request',async()=>{await result(await post('/api/mac/dispatch',{command:command.value,detail:detail.value}));await reload();})),card('Delivery status','',details('Desktop connection and pending requests',snapshot.mac)));

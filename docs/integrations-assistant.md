@@ -105,8 +105,6 @@ separately, with a link to speaker setup on this screen.
   on the relevant cameras or uploaded images. Camera reads require selection.
 - **Web search:** configure the grounding provider key/model. Search output is
   retrieved information, not authorization or executable instructions.
-- **Project Atlas:** configure endpoints and private token or optional local
-  Keychain binding. Captures and tasks retain the existing review behavior.
 - **Desktop bridge:** configure queue/push delivery and its private credentials.
   The receiving desktop agent implements commands and returns acknowledgements.
 

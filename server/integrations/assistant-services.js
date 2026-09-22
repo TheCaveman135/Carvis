@@ -12,7 +12,6 @@ const descriptions = {
   'learned-memory': ['Continuity Memory', 'Retain facts, preferences, owner rules, and tentative patterns with recall and dismissal controls.', 'Intelligence & routines'],
   cameras: ['Cameras & images', 'Inspect selected cameras or uploaded images with an objective and your room context.', 'Home & devices'],
   'web-search': ['Web search', 'Look up current information using your configured search provider.', 'Connected services'],
-  atlas: ['Project Atlas', 'Bring project context, captures, and reviewed task workflows into Carvis.', 'Connected services'],
   desktop: ['Desktop bridge', 'Send requests to your desktop agent through its configured queue or push endpoint.', 'Connected services'],
   'physical-carvis': ['Physical Carvis', 'Pair a physical device, receive status reports, and deliver acknowledged commands and speech.', 'Voice & display'],
 };
@@ -44,7 +43,6 @@ export function registerAssistantServices(registry) {
   for (const [id, [name, description, category]] of Object.entries(descriptions)) {
     const fields = sectionFields(id);
     if (id === 'assistant-engine') fields.push(password('openaiKey', 'OpenAI key override (optional)'), password('anthropicKey', 'Anthropic key override (optional)'));
-    if (id === 'atlas') fields.push(password('atlasToken', 'Atlas API token'));
     const module = {
       id, name, description, category, version: '1.0.0', icon: 'sparkles', fields,
       dependsOn: id === 'assistant-engine' ? [] : ['assistant-engine'],
