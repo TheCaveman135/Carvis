@@ -1,5 +1,6 @@
 import { el, input, field, button, toast, errorText } from "./ui.js";
 import { coalesceReads } from "./api.js";
+import { createAudioControls } from "./audio-controls.js";
 
 function roomNotesControl(saved) {
   const rows = el("div", { class: "room-note-rows" }),
@@ -71,7 +72,10 @@ function roomNotesControl(saved) {
 export function createIntegrationControls({ state, api, integration, values }) {
   const cfg = integration.config || {};
   const read = coalesceReads(api);
+  const audioControl = createAudioControls({ state, api, read, integration, values });
   return function createControl(f, value) {
+    const audio = audioControl(f, value);
+    if (audio) return audio;
     let control;
     if (f.type === "room-notes") control = roomNotesControl(value || {});
     else if (f.type === "boolean")
@@ -279,68 +283,6 @@ export function createIntegrationControls({ state, api, integration, values }) {
                 "No matching Home Assistant devices found.",
               ),
             );
-        } catch (error) {
-          control.parentElement?.append(
-            el(
-              "span",
-              { class: "field-description", role: "status" },
-              errorText(error),
-            ),
-          );
-        }
-      });
-    }
-    if (
-      [
-        "voice__inputDevice",
-        "speech__localDevice",
-        "speech__mediaPlayer",
-      ].includes(f.key)
-    ) {
-      control = el(
-        "select",
-        { name: f.key },
-        el("option", { value: "" }, "Choose a device"),
-        ...(value
-          ? [el("option", { value, selected: true }, `${value} (saved)`)]
-          : []),
-      );
-      queueMicrotask(async () => {
-        try {
-          let options;
-          if (f.key === "speech__mediaPlayer") {
-            const ha = state.data.homeAssistant;
-            if (!ha?.enabled)
-              throw Error("Enable Home Assistant to choose an HA speaker.");
-            const result = await read("/api/home-assistant/entities");
-            options = result.entities
-              .filter(
-                (e) =>
-                  e.entity_id.startsWith("media_player.") &&
-                  ha.config?.controlled?.includes(e.entity_id),
-              )
-              .map((e) => ({
-                value: e.entity_id,
-                label: e.name || e.entity_id,
-              }));
-          } else {
-            const result = await read(
-              `/api/integrations/${integration.id}/audio-devices`,
-            );
-            options =
-              f.key === "voice__inputDevice" ? result.inputs : result.outputs;
-            if (result.warning) control.title = result.warning;
-          }
-          const current = control.value;
-          control.replaceChildren(
-            el("option", { value: "" }, "Choose a device"),
-            ...options.map((o) => el("option", { value: o.value }, o.label)),
-          );
-          if (current && !options.some((o) => o.value === current))
-            control.append(
-              el("option", { value: current }, "Saved device (unavailable)"),
-            );
-          control.value = current;
         } catch (error) {
           control.parentElement?.append(
             el(

@@ -41,7 +41,7 @@ export function sectionFields(id) {
   for (const [role, owner] of Object.entries(ROLE_OWNERS)) if (owner === id) {
     defaults.models = merge(defaults.models, { roles: { [role]: DEFAULTS.models.roles[role] || DEFAULTS.models.roles.triage } });
   }
-  if (id === 'speech') defaults.speech = { ...defaults.speech, voice: '' };
+  if (id === 'speech') defaults.speech = { ...defaults.speech, language: '', voice: '' };
   const flat = Object.fromEntries(Object.entries(flatten(defaults)).filter(([key]) => !key.startsWith('models__roles__') || ROLE_OWNERS[key.split('__')[2]] === id));
   return Object.entries(flat).filter(([key]) => !['agent__dryRun', 'carvis__personality', 'models__roles__carvis__provider', 'models__roles__carvis__model', 'memory__maxItems', 'memory__maxChars', 'memory__nearDuplicate'].includes(key) && !key.endsWith('__token') && !key.endsWith('__promptVersion')).map(([key, value]) => {
     const label = key.split('__').slice(1).join(' / ').replace(/([a-z])([A-Z])/g, '$1 $2');

@@ -471,7 +471,7 @@ export function planTtsCall({
   const spoken = sanitizeSpeech(message);
   if (!spoken) throw valueError('TTS message is required');
   if (spoken.length > limit) throw valueError(`TTS message cannot exceed ${limit} characters`);
-  if (language !== undefined && !/^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(String(language))) {
+  if (language !== undefined && !/^[a-z]{2,3}(?:[-_][a-z0-9]{2,8})*$/i.test(String(language))) {
     throw valueError('TTS language must be a language tag such as en or en-US');
   }
 

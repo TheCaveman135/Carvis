@@ -50,7 +50,11 @@ separately, with a link to speaker setup on this screen.
   with the webpage closed unless muted. AI model roles are also available in
   **Settings → Model Router** when this integration is enabled.
 - **Spoken replies:** choose a local speaker, phone-only, HA-only, physical-only, or physical-then-HA.
-  Set the HA speaker, TTS entity, voice, and automatic-reply preference. Phone
+  Speakers and Home Assistant voice services load automatically into dropdowns.
+  Choose a service, then optionally a language and voice from its available choices;
+  **Service default** keeps the provider's configured voice. Changes autosave.
+  Only speakers selected for control are offered. If no voice services are found,
+  add a text-to-speech integration in Home Assistant first. Phone
   playback requires a connected full companion that acknowledges playback.
   Intentional silent TV navigation remains silent when that option is on.
 - **Even Realities:** use the full [companion](integrations-even-realities.md) for

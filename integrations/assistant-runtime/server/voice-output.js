@@ -117,7 +117,8 @@ export class VoiceOutput {
         current.speech?.mediaPlayer?.trim() === speaker && current.speech?.ttsEntity?.trim() === provider &&
         current.entities?.controlled?.includes(speaker);
     };
-    if (!speaker || !provider || !permitted()) {
+    if (!provider) return { success: false, error: 'Choose a Home Assistant voice service in Integrations → Spoken replies.' };
+    if (!speaker || !permitted()) {
       return { success: false, error: 'no selected Home Assistant speech speaker is configured' };
     }
     let plan;
@@ -132,12 +133,13 @@ export class VoiceOutput {
         media_player_entity_id: speaker,
         message,
         cache: true,
+        ...(cfg.speech?.language ? { language: cfg.speech.language } : {}),
       }, {
         availableEntities: new Set([provider, speaker]),
         allowedMediaPlayers: new Set([speaker]),
       });
       // Voice is scoped to Carvis calls, leaving the HA provider default intact.
-      if (typeof cfg.speech?.voice === 'string' && /^[a-z][a-z0-9_-]{0,39}$/i.test(cfg.speech.voice)) {
+      if (typeof cfg.speech?.voice === 'string' && cfg.speech.voice.trim() && cfg.speech.voice.length <= 200 && !/[\x00-\x1f]/.test(cfg.speech.voice)) {
         plan.data.options = {voice: cfg.speech.voice};
       }
       await this.ha.callService(plan.domain, plan.service, plan.data, ttsOptions);

@@ -49,7 +49,11 @@ export function registerAssistantServices(registry) {
       permissions: id === 'assistant-engine' ? ['Coordinate enabled Integrations through their existing guards', 'Retain private execution traces and conversation context'] : [`Use ${name.toLowerCase()} only while enabled`, 'Keep existing selection and authorization requirements'],
       validateConfig: cfg => validateFields(fields, cfg),
       async test() { return runtime.status(); },
-      async route({ method, path }) {
+      async route({ method, path, body = {}, authenticatedAs }) {
+        if (id === 'speech' && method === 'POST' && path === '/voice-options') {
+          if (authenticatedAs !== 'owner') throw Error('Sign in to choose a voice service.');
+          return runtime.call('speech_options', { engineId: body.engineId, language: body.language });
+        }
         if(method==='GET'&&path==='/audio-devices'&&['voice','speech'].includes(id)){
           let devices=[],warning='';try{devices=await listHostAudio();}catch(e){warning=e.message;}
           const inputs=devices.filter(d=>d.input).map(d=>({value:`local:${d.uid}`,label:d.name}));

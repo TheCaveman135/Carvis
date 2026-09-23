@@ -44,7 +44,8 @@ export async function integrationRoutes({
     const result =
       !device &&
       ((id === "home-assistant" && suffix === "/entities") ||
-        (["voice", "speech"].includes(id) && suffix === "/audio-devices"))
+        (["voice", "speech"].includes(id) && suffix === "/audio-devices") ||
+        (id === "speech" && suffix === "/voice-options"))
         ? await registry.modules
             .get(id)
             .route(request, registry.contextForTest(id))

@@ -52,6 +52,8 @@ const FIELD_HELP = {
   speech__autoReplies: ['Read replies aloud', 'Speak Carvis responses automatically, except intentionally silent actions.'],
   speech__mediaPlayer: ['Home Assistant speaker', 'A speaker selected for control in Home Assistant settings.'],
   speech__ttsEntity: ['Home Assistant voice service', 'The TTS provider entity that creates audio for your HA speaker.'],
+  speech__language: ['Speech language', 'Choose a language to see the voices offered by your Home Assistant voice service.'],
+  speech__voice: ['Home Assistant voice', 'Voices load automatically for your selected service and language. Leave on Service default to use its configured voice.'],
   carvis__maxRounds: ['Maximum thinking steps', 'Limits how many model/tool rounds one request can use.'],
   agent__allowedDomains: ['Allowed device types', 'Device categories Carvis may control, such as light or fan. Existing guards still apply.'],
   areaNotes: ['Room and object notes', 'Describe rooms or objects to help Carvis understand your home and camera images.'],
@@ -65,6 +67,10 @@ export function decorateAssistantIntegration(module) {
   module.controls = { module: '/integrations/assistant-engine/controls.js', dependsOn: ['assistant-engine'] };
   delete module.workspaceUrl;
   delete module.workspaceDependsOn;
+  if (module.id === 'speech') {
+    const order = ['speech__outputMode', 'speech__autoReplies', 'speech__localDevice', 'speech__mediaPlayer', 'speech__ttsEntity', 'speech__language', 'speech__voice'];
+    module.fields.sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+  }
   for (const field of module.fields || []) {
     if (['openaiKey','anthropicKey','stt__deepgramKey','stt__assemblyaiKey','search__geminiKey'].includes(field.key)) field.description = 'Optional integration-specific key. Leave blank to use the shared key from Carvis Settings → Global API keys, or to keep an existing override.';
     const help = FIELD_HELP[field.key];

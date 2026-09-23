@@ -10,6 +10,7 @@ import { PatternLearner } from './patterns.js';
 import { PreferenceLearner } from './preference-learner.js';
 import { conversationStore } from './conversation-store.js';
 import { PhoneSpeaker } from './phone-speaker.js';
+import { homeSpeechOptions } from './speech-options.js';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -1212,6 +1213,7 @@ async function ipc(method,args={}) {
   if(method==='clear_external_confirmation')return integrationBridge.clearConfirmation(args.id);
   if(method==='config')return structuredClone(rawConfig());
   if(method==='state')return snapshot();
+  if(method==='speech_options')return homeSpeechOptions(ha,config,args);
   if(method==='tools')return {definitions:gateway.definitions(),inventory:gateway.inventory()};
   if(method==='context')return carvis.context(args.text || '');
   if(method==='reply')return feed.push(args.kind || 'reply',args.text || '',{source:args.source || 'integration'});

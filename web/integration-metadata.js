@@ -113,6 +113,10 @@ export function integrationFieldGroup(integration, definition) {
       "speech__outputMode",
       "speech__localDevice",
       "speech__mediaPlayer",
+      "speech__ttsEntity",
+      "speech__language",
+      "speech__voice",
+      "speech__autoReplies",
     ].includes(definition.key)
   )
     return {
