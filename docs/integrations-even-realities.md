@@ -4,7 +4,7 @@ The optional Even Realities integration connects G2 glasses to your own Carvis i
 
 ## Connect the full companion
 
-1. Give your Carvis installation an HTTPS address reachable from your phone.
+1. Choose an HTTP or HTTPS Carvis address reachable from your phone. Local Wi-Fi, a tailnet, and your own remote-access setup are supported.
 2. Enable and configure **Advanced assistant** and **Even Realities** in Carvis's Integrations. Enter your server address in Even Realities and generate a **Device pairing token**.
 3. For microphone input, also configure and enable **Voice input & chat**. Select **Even glasses** as its microphone. It uses your speech provider, model, and **Settings → Global API keys**; the glasses integration never needs a second provider key. Its page shows when another microphone is selected and links to these shared settings. For spoken replies, configure and enable **Spoken replies**, then choose your output on the companion's phone screen. Home speaker playback also needs Home Assistant and a selected speaker.
 4. Build the companion for your server origin. Even Hub requires that origin in the package network whitelist:
@@ -15,12 +15,14 @@ The optional Even Realities integration connects G2 glasses to your own Carvis i
    CARVIS_PUBLIC_URL=https://your-carvis.example npm run pack
    ```
 
+   To allow alternate addresses in the same package, add `CARVIS_ADDITIONAL_URLS` as a comma-separated list—for example, an HTTP LAN address alongside your HTTPS address.
+
 5. Upload `carvis.ehpk` to your Even Hub developer dashboard. Open the app, enter your **Carvis address** and **Token** under **Connection settings**, and tap **Save and reconnect**. The placeholder `https://carvis.example` in the source manifest is not a hosted service.
 6. Tap **Unmute** to begin listening. Your mute preference is remembered. Tap again to turn off capture and discard unfinished audio.
 
 The package uses SDK 0.0.15 and requires Even app 2.2.10 or later. Generated manifests, build output, and packages are ignored by Git. Packages contain your server origin in the whitelist, but no pairing token. The pairing token is saved in Even's device storage and never placed in a URL. It is limited to companion routes and cannot administer Carvis. Regenerate it in Integrations if it is lost, then reconnect each device.
 
-The source and full companion use a separate storage namespace from older configured installations. HTTP is accepted only for loopback development; use HTTPS from a physical phone.
+The source and full companion use a separate storage namespace from older configured installations. HTTP and HTTPS are accepted on a physical phone. HTTP sends the pairing token and requests without transport encryption; use it on a trusted network. The app package must allow each exact origin (scheme, host, and port). Changing the address in the app does not expand the package whitelist.
 
 ## Voice, replies, and phone audio
 

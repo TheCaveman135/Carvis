@@ -86,9 +86,9 @@ test("Even settings require secure pairing without a second speech provider", ()
     () =>
       even.validateConfig({
         ...ctx.config,
-        publicBaseUrl: "http://remote.example",
+        publicBaseUrl: "ftp://remote.example",
       }),
-    /HTTPS/,
+    /HTTP or HTTPS/,
   );
   assert.equal(even.validateConfig(ctx.config), ctx.config);
   assert(!even.fields.some(field => field.key.startsWith('speech') || field.key === 'microphoneEnabled'));

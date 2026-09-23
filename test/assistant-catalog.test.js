@@ -28,17 +28,15 @@ test('speech choices match supported routes and context settings do not require 
  const engine=registry.modules.get('assistant-engine');assert.equal(engine.fields.find(f=>f.key==='models__providers').advanced,true);
 });
 
-test('an unchanged imported companion address does not block display edits, but new HTTP destinations are rejected',async t=>{
+test('companion addresses support HTTP and HTTPS without legacy exceptions',async t=>{
  const r=await fixture(t),module=r.modules.get('even-realities');
- r.store.config.integrations['assistant-engine']={enabled:true,config:{}};
- const config={publicBaseUrl:'http://192.0.2.10:8787',pairingToken:'synthetic-pairing-token-long-enough',glasses__feedSize:70};
- r.store.config.integrations['even-realities']={enabled:true,config:{...config}};
- assert.throws(()=>module.validateConfig(config),/HTTPS/);
- r.store.plugin('assistant-engine').set('originalLegacyConfig',{server:{host:'192.0.2.10',port:8787}});
- assert.equal(module.validateConfig({...config,glasses__feedSize:80}).publicBaseUrl,config.publicBaseUrl);
- assert.throws(()=>module.validateConfig({...config,publicBaseUrl:'http://192.0.2.11:8787'}),/HTTPS/);
- assert.throws(()=>module.validateConfig({...config,publicBaseUrl:'http://192.0.2.10:8788'}),/HTTPS/);
- assert.throws(()=>module.validateConfig({...config,pairingToken:'short'}),/32/);
+ const config={pairingToken:'synthetic-pairing-token-long-enough',glasses__feedSize:70};
+ for(const publicBaseUrl of ['http://192.0.2.10:8787','http://100.64.0.8:8787','http://carvis.local:8787','https://carvis.example','http://[fd00::1]:8787']){
+  assert.equal(module.validateConfig({...config,publicBaseUrl}).publicBaseUrl,publicBaseUrl);
+ }
+ const valid={...config,publicBaseUrl:'http://carvis.local:8787'};
+ assert.throws(()=>module.validateConfig({...valid,pairingToken:'short'}),/32/);
+ for(const publicBaseUrl of ['ftp://carvis.example','javascript:alert(1)','http://user:pass@carvis.local','http://carvis.local?token=secret'])assert.throws(()=>module.validateConfig({...config,publicBaseUrl}));
 });
 
 test('voice defaults to the same Deepgram provider the runtime and UI use',async t=>{

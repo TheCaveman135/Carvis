@@ -7,6 +7,8 @@ npm ci
 CARVIS_PUBLIC_URL=https://your-carvis.example npm run pack
 ```
 
+Both HTTP and HTTPS are supported. Include the port for a direct connection, such as `http://carvis.local:8787`. To switch between multiple addresses, include their origins with `CARVIS_ADDITIONAL_URLS` when packaging.
+
 Upload `carvis.ehpk` to Even Hub. Enter your server address and pairing token on the phone. Never commit local package manifests or pairing credentials.
 
 `npm run dev` serves the full companion. `npm run build:basic` and `npm run pack:basic` build the smaller core-only companion from `basic/`; it has its own package identifier and no phone speech output.

@@ -5,6 +5,8 @@
  * long poll. The long poll is deliberate — a 1Hz poll loop on something you
  * wear is a battery decision as much as a networking one.
  */
+import { parseCarvisUrl } from '../shared/connection.js';
+
 export type FeedEntry = {
   id: string;
   seq: number;
@@ -111,16 +113,7 @@ function withTimeout(ms: number, external?: AbortSignal): AbortSignal {
 
 /** A public package never carries a destination or credential. */
 export function normalizeConnection(baseUrl: string, token: string): {baseUrl: string; token: string} {
-  let url: URL;
-  try { url = new URL(baseUrl.trim()); }
-  catch { throw new Error('Enter your full Carvis address, including https://.'); }
-  const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
-  if (url.protocol !== 'https:' && !(local && url.protocol === 'http:')) {
-    throw new Error('Use HTTPS for your Carvis address. HTTP is only available for local development.');
-  }
-  if (url.username || url.password || url.search || url.hash) {
-    throw new Error('Use the Carvis server address without a username, password, query, or fragment.');
-  }
+  const url = parseCarvisUrl(baseUrl);
   if (!token.trim()) throw new Error('Enter the pairing token from Carvis Integrations.');
   return {baseUrl: url.toString().replace(/\/+$/, ''), token: token.trim()};
 }

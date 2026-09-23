@@ -85,25 +85,7 @@ export function registerAssistantServices(registry) {
     );
     module.fields.push(...extra);
     const validate = module.validateConfig;
-    module.validateConfig = config => {
-      let candidate = config, importedUrl;
-      if (id === 'even-realities' && runtime.enabled()) {
-        const saved = registry.store.config.integrations[id]?.config;
-        const original = registry.store.plugin('assistant-engine').get('originalLegacyConfig', {});
-        // An unchanged, explicitly imported companion address must not prevent
-        // saving display preferences. New or changed destinations still pass
-        // the normal HTTPS validator; this never changes the device endpoint.
-        if (config.publicBaseUrl && config.publicBaseUrl === saved?.publicBaseUrl) {
-          const url = new URL(config.publicBaseUrl);
-          if (url.protocol === 'http:' && url.hostname === original.server?.host && Number(url.port || 80) === Number(original.server?.port)) {
-            importedUrl = config.publicBaseUrl;
-            const validationUrl = new URL(url); validationUrl.protocol = 'https:';
-            candidate = { ...config, publicBaseUrl: validationUrl.toString() };
-          }
-        }
-      }
-      return { ...validateFields(extra, config), ...validate(candidate), ...(importedUrl ? { publicBaseUrl: importedUrl } : {}) };
-    };
+    module.validateConfig = config => ({ ...validateFields(extra, config), ...validate(config) });
     decorateAssistantIntegration(module);
     if (id === 'home-assistant') {
       const tools = module.tools;

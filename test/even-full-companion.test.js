@@ -8,6 +8,7 @@ const source = name => readFileSync(new URL(`../integrations/even-realities/src/
 const moduleUrl = name => {
   let code = stripTypeScriptTypes(source(name),{mode:'strip'});
   if (name === 'vad') code = code.replace("'./config'",JSON.stringify(moduleUrl('config')));
+  if (name === 'client') code = code.replace("'../shared/connection.js'",JSON.stringify(new URL('../integrations/even-realities/shared/connection.js',import.meta.url).href));
   return `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
 };
 const {CarvisClient,normalizeConnection}=await import(moduleUrl('client'));
@@ -33,7 +34,7 @@ test('pairing validates destinations and an unconfigured device sends no traffic
     await assert.rejects(()=>client.sendAudio(new Uint8Array(320)),/pairing token first/);
     await assert.rejects(()=>client.phonePoll('demo',false),/pairing token first/);
     assert.equal(calls.length,0);
-    for(const address of ['javascript:alert(1)','http://remote.example','https://u:p@carvis.example','https://carvis.example/?token=x','https://carvis.example/#secret'])assert.throws(()=>normalizeConnection(address,'pairing-token'));
+    for(const address of ['javascript:alert(1)','ftp://remote.example','https://u:p@carvis.example','https://carvis.example/?token=x','https://carvis.example/#secret'])assert.throws(()=>normalizeConnection(address,'pairing-token'));
     assert.throws(()=>normalizeConnection('https://carvis.example',''),/pairing token/);
     client.configure('https://carvis.example/','fixture-pairing-token');
     await client.sendText('Hello');
@@ -41,9 +42,27 @@ test('pairing validates destinations and an unconfigured device sends no traffic
     assert.equal(calls[0][1].headers.Authorization,'Bearer fixture-pairing-token');
     assert.deepEqual(JSON.parse(calls[0][1].body),{text:'Hello'});
     assert.deepEqual(normalizeConnection('http://127.0.0.1:9371/','local'),{baseUrl:'http://127.0.0.1:9371',token:'local'});
-    assert.throws(()=>client.configure('http://unsafe.example','changed'));
+    assert.throws(()=>client.configure('ftp://invalid.example','changed'));
+    assert.throws(()=>client.configure('http://valid.example','  '),/pairing token/);
     await client.sendText('Still paired');
     assert.equal(calls[1][0],'https://carvis.example/api/voice/transcript');
+    assert.equal(calls[1][1].headers.Authorization,'Bearer fixture-pairing-token');
+  }finally{globalThis.fetch=original;}
+});
+
+test('companion pairs over HTTP or HTTPS on the user-selected network',async()=>{
+  const original=globalThis.fetch;
+  const calls=[];
+  globalThis.fetch=async(...args)=>{calls.push(args);return Response.json({ok:true});};
+  try{
+    for (const address of ['http://192.168.1.10:8787','http://carvis.local:8787','http://carvis.tailnet.example:8787','http://custom.example/carvis','https://custom.example/carvis']) {
+      const client=new CarvisClient(` ${address}/ `,' fixture-pairing-token ');
+      assert.equal(client.configured,true,address);
+      await client.sendText('Hello');
+      const [url,options]=calls.at(-1);
+      assert.equal(url,`${address}/api/voice/transcript`);
+      assert.equal(options.headers.Authorization,'Bearer fixture-pairing-token');
+    }
   }finally{globalThis.fetch=original;}
 });
 
@@ -94,7 +113,7 @@ test('companion explains rejected pairing and network failures without exposing 
   await assert.rejects(()=>client.resolveConfirmation('fixture',true),/belongs to the owner chat/);
   globalThis.fetch=async()=>{throw new TypeError('Load failed');};
   await assert.rejects(()=>client.pollFeed(0,0,undefined,true),error=>/Safari/.test(error.message)&&!/synthetic-private-pairing-token/.test(error.message));
-  const invalid=new CarvisClient('http://remote.example','token');
+  const invalid=new CarvisClient('ftp://remote.example','token');
   assert.equal(invalid.configured,false);assert.match(invalid.configurationError,/HTTPS/);
   invalid.configure('https://carvis.example','token');assert.equal(invalid.configurationError,'');
  }finally{globalThis.fetch=original;}

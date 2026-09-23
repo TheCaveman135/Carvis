@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { parseCarvisUrl } from "../../integrations/even-realities/shared/connection.js";
 import { validate } from "../validation.js";
 import { projectRuntimeConfig } from "../assistant-config.js";
 import { Transcriber, speechProvider, wavFromPcm } from "../../integrations/assistant-runtime/server/stt.js";
@@ -461,7 +462,7 @@ export default {
       label: "Carvis URL",
       type: "url",
       required: true,
-      description: "An HTTPS address reachable from your phone.",
+      description: "An HTTP or HTTPS address reachable from your phone, including the port when needed.",
     },
     {
       key: "pairingToken",
@@ -473,17 +474,7 @@ export default {
     },
   ],
   validateConfig(config) {
-    const url = new URL(config.publicBaseUrl);
-    assert(
-      url.protocol === "https:" ||
-        (url.protocol === "http:" &&
-          ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)),
-      "Use HTTPS for a remote Carvis connection.",
-    );
-    assert(
-      !url.username && !url.password && !url.search && !url.hash,
-      "Carvis URL must not contain credentials or query parameters.",
-    );
+    parseCarvisUrl(config.publicBaseUrl);
     assert(
       typeof config.pairingToken === "string" &&
         config.pairingToken.length >= 32,

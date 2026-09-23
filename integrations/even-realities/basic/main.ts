@@ -6,6 +6,7 @@ import {
 import { Display } from "./display";
 import { WidgetFocus } from "./focus";
 import { UtteranceDetector, toBase64 } from "./audio";
+import { parseCarvisUrl } from "../shared/connection.js";
 import type { Hud, Result, Confirmation } from "./types";
 
 const $ = <T extends HTMLElement>(id: string) =>
@@ -186,23 +187,12 @@ async function saveConnection() {
     );
 }
 async function connect(url: string, pairingToken: string) {
-  const parsed = new URL(url);
-  if (
-    parsed.protocol !== "https:" &&
-    !(
-      parsed.protocol === "http:" &&
-      ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname)
-    )
-  )
-    throw new Error("Use an HTTPS Carvis URL.");
-  if (parsed.username || parsed.password || parsed.search || parsed.hash)
-    throw new Error(
-      "Use the Carvis URL without embedded credentials or query parameters.",
-    );
-  if (pairingToken.length < 32)
+  const parsed = parseCarvisUrl(url);
+  const nextToken = pairingToken.trim();
+  if (nextToken.length < 32)
     throw new Error("Paste the complete device pairing token.");
-  baseUrl = url.replace(/\/$/, "");
-  token = pairingToken;
+  baseUrl = parsed.toString().replace(/\/+$/, "");
+  token = nextToken;
   connected = false;
   clearTimeout(pollTimer);
   hud = await request<Hud>("/feed");
