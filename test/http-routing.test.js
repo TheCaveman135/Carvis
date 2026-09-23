@@ -152,3 +152,23 @@ test("extracted routes retain JSON validation, owner access and streaming conver
     404,
   );
 });
+
+test("companion can read pairing failures while owner data stays protected", async t => {
+ const app=await createApp({dataDirectory:directory(t),modules:[{
+  id:'fixture-engine',name:'Fixture',fields:[],
+  deviceRoute:(method,path)=>method==='GET' && path==='/api/glasses/feed',
+ }]});
+ const base=await listen(t,app.server);
+ const origin='https://companion.example';
+ const headers={Origin:origin,Authorization:'Bearer wrong-pairing-token'};
+ const preflight=await fetch(base+'/api/glasses/feed',{method:'OPTIONS',headers:{Origin:origin,'Access-Control-Request-Method':'GET','Access-Control-Request-Headers':'authorization,content-type'}});
+ assert.equal(preflight.status,204);assert.equal(preflight.headers.get('access-control-allow-origin'),origin);
+ for(const path of ['/api/glasses/feed','/api/integrations/even-realities/feed']){
+  const denied=await fetch(base+path,{headers});
+  assert.equal(denied.status,401);assert.equal(denied.headers.get('access-control-allow-origin'),origin);
+  assert.equal(denied.headers.get('access-control-allow-credentials'),null);
+  assert.match((await denied.json()).error,/Sign in/);
+ }
+ const owner=await fetch(base+'/api/state',{headers});
+ assert.equal(owner.status,401);assert.equal(owner.headers.get('access-control-allow-origin'),null);
+});

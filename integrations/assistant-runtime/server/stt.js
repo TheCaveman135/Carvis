@@ -11,21 +11,28 @@
  * of times, and still missed real commands in a noisy room. Both of these
  * are what it costs to actually hear correctly in that room.
  *
- * The tradeoff is real and worth stating: audio now leaves the machine, and
- * every utterance costs money. Both are why mute lives entirely on the
- * glasses and gates capture before anything is sent -- see the comment on
- * `POST /api/voice/audio` in server/index.js. A muted G2 never calls either
- * engine at all.
+ * Microphone controls gate capture and server-side transcription. Pending
+ * work is cancelled when access changes; recordings are never retained here.
  */
 import { log } from './log.js';
 
 const DEEPGRAM_URL = 'https://api.deepgram.com/v1/listen';
 const ASSEMBLYAI_URL = 'https://sync.assemblyai.com/transcribe';
 
+export function speechProvider(config, environment = process.env) {
+  const cfg = config?.stt || {};
+  const engine = cfg.engine === 'assemblyai' ? 'assemblyai' : 'deepgram';
+  const key = engine === 'assemblyai'
+    ? cfg.assemblyaiKey || environment.ASSEMBLYAI_API_KEY || ''
+    : cfg.deepgramKey || environment.DEEPGRAM_API_KEY || '';
+  return { engine, key: key.trim(), model: cfg.model || (engine === 'assemblyai' ? 'universal-3-5-pro' : 'nova-3') };
+}
+
 export class Transcriber {
   constructor(getConfig, { fetch: fetcher = fetch, signal } = {}) {
     this.fetch = fetcher;
     this.signal = signal;
+    this.pending = new AbortController();
     this.getConfig = getConfig;
     this.lastMs = 0;
     this.lastConfidence = null;
@@ -35,21 +42,10 @@ export class Transcriber {
 
   /** No process to boot -- kept so callers written for the old worker still work. */
   start() {}
-  stop() {}
-
-  #engine() {
-    return this.getConfig().stt.engine === 'assemblyai' ? 'assemblyai' : 'deepgram';
-  }
-
-  #key() {
-    const cfg = this.getConfig().stt;
-    return this.#engine() === 'assemblyai'
-      ? (cfg.assemblyaiKey || process.env.ASSEMBLYAI_API_KEY || '').trim()
-      : (cfg.deepgramKey || process.env.DEEPGRAM_API_KEY || '').trim();
-  }
-
-  #defaultModel() {
-    return this.#engine() === 'assemblyai' ? 'universal-3-5-pro' : 'nova-3';
+  stop() { this.cancel(); }
+  cancel() {
+    this.pending.abort(new DOMException('Microphone access changed.', 'AbortError'));
+    this.pending = new AbortController();
   }
 
   /**
@@ -60,10 +56,11 @@ export class Transcriber {
    * per-utterance score (0-1), not a heuristic reconstructed from decode
    * internals. `stats` describes input levels without retaining microphone audio.
    */
-  async transcribe(pcm) {
-    this.lastAudio = audioStats(pcm);
-    const engine = this.#engine();
-    const key = this.#key();
+  async transcribe(pcm, { signal } = {}) {
+    const stats = audioStats(pcm);
+    this.lastAudio = stats;
+    const cfg = this.getConfig();
+    const { engine, key, model } = speechProvider(cfg);
     if (!key) {
       const label = engine === 'assemblyai' ? 'AssemblyAI' : 'Deepgram';
       this.error = `no ${label} API key set`;
@@ -71,19 +68,22 @@ export class Transcriber {
     }
 
     const started = Date.now();
+    const requestSignal = AbortSignal.any([this.pending.signal, this.signal, signal, AbortSignal.timeout(20000)].filter(Boolean));
+    requestSignal.throwIfAborted();
     const result =
-      engine === 'assemblyai' ? await this.#transcribeAssemblyAI(pcm, key) : await this.#transcribeDeepgram(pcm, key);
+      engine === 'assemblyai'
+        ? await this.#transcribeAssemblyAI(pcm, key, model, requestSignal)
+        : await this.#transcribeDeepgram(pcm, key, model, cfg.stt.keyterms, requestSignal);
+    requestSignal.throwIfAborted();
 
     this.error = '';
     this.lastMs = Date.now() - started;
     this.lastConfidence = result.confidence;
-    return { ...result, stats: this.lastAudio };
+    return { ...result, stats };
   }
 
-  async #transcribeDeepgram(pcm, key) {
-    const cfg = this.getConfig().stt;
-    const model = cfg.model || this.#defaultModel();
-    const url = deepgramUrl(model, cfg.keyterms);
+  async #transcribeDeepgram(pcm, key, model, keyterms, signal) {
+    const url = deepgramUrl(model, keyterms);
 
     let res;
     try {
@@ -91,9 +91,10 @@ export class Transcriber {
         method: 'POST',
         headers: { Authorization: `Token ${key}`, 'Content-Type': 'audio/wav' },
         body: wavFromPcm(pcm),
-        signal: this.signal ? AbortSignal.any([this.signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000),
+        signal,
       });
     } catch (err) {
+      signal.throwIfAborted();
       this.error = `could not reach Deepgram (${err.message})`;
       throw new Error(this.error);
     }
@@ -117,10 +118,7 @@ export class Transcriber {
    * no polling -- the model tag goes in a header, not the URL. Capped at 2
    * minutes of audio per request, which every utterance here is nowhere near.
    */
-  async #transcribeAssemblyAI(pcm, key) {
-    const cfg = this.getConfig().stt;
-    const model = cfg.model || this.#defaultModel();
-
+  async #transcribeAssemblyAI(pcm, key, model, signal) {
     const form = new FormData();
     form.append('audio', new Blob([wavFromPcm(pcm)], { type: 'audio/wav' }), 'utterance.wav');
 
@@ -130,9 +128,10 @@ export class Transcriber {
         method: 'POST',
         headers: { Authorization: key, 'X-AAI-Model': model },
         body: form,
-        signal: this.signal ? AbortSignal.any([this.signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000),
+        signal,
       });
     } catch (err) {
+      signal.throwIfAborted();
       this.error = `could not reach AssemblyAI (${err.message})`;
       throw new Error(this.error);
     }
@@ -151,12 +150,12 @@ export class Transcriber {
   }
 
   state() {
-    const cfg = this.getConfig().stt;
+    const { engine, key, model } = speechProvider(this.getConfig());
     return {
       running: true,
-      ready: Boolean(this.#key()),
-      engine: this.#engine(),
-      model: cfg.model || this.#defaultModel(),
+      ready: Boolean(key),
+      engine,
+      model,
       device: 'cloud',
       error: this.error,
       lastMs: this.lastMs,

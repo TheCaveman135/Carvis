@@ -17,7 +17,7 @@ export async function integrationModels(input,store,registry,fetcher=fetch){
    if(kind==='anthropic')headers={'x-api-key':key,'anthropic-version':'2023-06-01'};
    else if(key)headers.Authorization=`Bearer ${key}`;
  }else if(input.field==='ollama__model'){
-   const base=cfg.ollama.baseUrl || cfg.models.providers.find(p=>p.id==='ollama')?.baseUrl;
+   const base=cfg.ollama.url || cfg.models.providers.find(p=>p.id==='ollama')?.baseUrl;
    if(!base)throw Error('Set your Ollama server address first.');
    kind='ollama';url=endpoint(base)+'/api/tags';
  }else if(input.field==='search__model'){

@@ -15,7 +15,7 @@ test('HA migration preserves permissions and credentials as core settings',t=>{
  store.config.integrations['home-assistant']={enabled:true,config:original};initializeHome(store);
  assert(homeReady(store));assert.deepEqual(store.config.homeAssistant.config,{...original,homeName:'My Home'});
  assert(!Object.keys(store.config.integrations).includes('home-assistant'));
- const reloaded=new Store(dir);assert(!reloaded.config.integrations['home-assistant']);initializeHome(reloaded);
+ const reloaded=new Store(dir);assert(!Object.keys(reloaded.config.integrations).includes('home-assistant'));initializeHome(reloaded);
  assert.deepEqual(reloaded.config.integrations['home-assistant'].config.guards,original.guards);
 });
 test('fresh home setup must connect, name the home, and select devices; core HA stays outside catalog',async t=>{
@@ -29,5 +29,13 @@ test('fresh home setup must connect, name the home, and select devices; core HA 
  await request('/api/home-assistant',{config:{homeName:'Demo Home',baseUrl:'https://ha.example',token:'fixture-secret',observed:['light.desk'],controlled:[],guards:{}}},'PUT');
  assert.equal((await request('/api/home-assistant/complete',{})).status,200);
  state=await (await request('/api/state')).json();assert.equal(state.homeSetupRequired,false);assert.equal(state.homeAssistant.config.homeName,'Demo Home');assert(!JSON.stringify(state).includes('fixture-secret'));
+ const before=structuredClone(app.store.config.homeAssistant);
+ assert.equal((await request('/api/settings',{profile:{personality:'Brief and helpful.'}})).status,200);
+ assert.equal((await request('/api/settings',{apiKeys:{deepgram:'synthetic-shared-key'}})).status,200);
+ state=await (await request('/api/state')).json();
+ assert.equal(state.homeAssistant.enabled,true);
+ assert.deepEqual(app.registry.getConfig('home-assistant'),before.config);
+ assert.deepEqual(app.store.config.homeAssistant,before);
+ assert(!Object.keys(app.store.config.integrations).includes('home-assistant'));
  assert.equal((await request('/api/integrations/home-assistant',{enabled:false},'PUT')).status,400);
 });

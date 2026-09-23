@@ -39,6 +39,14 @@ export function createRequestHandler(context) {
           403,
         );
       const devicePath = path.startsWith("/api/integrations/even-realities/");
+      const deviceMethod = req.method === "OPTIONS"
+        ? String(req.headers["access-control-request-method"] || "GET")
+        : req.method;
+      // Device clients need to read pairing/disabled errors too. CORS does not
+      // authenticate them; the owner/session and token gates below still apply.
+      const deviceEndpoint = devicePath || [...registry.modules.values()].some(
+        module => module.deviceRoute?.(deviceMethod, path),
+      );
       const rawModule = registry.rawModule(
         req.method === "OPTIONS"
           ? String(req.headers["access-control-request-method"] || "GET")
@@ -57,11 +65,7 @@ export function createRequestHandler(context) {
           sameSecret(bearer, glasses.config?.pairingToken));
       if (
         req.method === "OPTIONS" &&
-        (devicePath ||
-          rawModule?.deviceRoute?.(
-            String(req.headers["access-control-request-method"] || "GET"),
-            path,
-          ))
+        deviceEndpoint
       ) {
         res.writeHead(204, {
           "Access-Control-Allow-Origin": req.headers.origin || "*",
@@ -72,7 +76,7 @@ export function createRequestHandler(context) {
         });
         return res.end();
       }
-      if (device) {
+      if (deviceEndpoint) {
         res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
         res.setHeader("Vary", "Origin");
       }

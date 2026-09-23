@@ -4,6 +4,9 @@ import {
   publicGlobalKeys,
   updateGlobalKeys,
   resolvedMainModel,
+  globalKeys,
+  usesOfficialOpenAI,
+  savedOpenAIKey,
 } from "../../global-keys.js";
 import { discoverModels } from "../../model-catalog.js";
 import { integrationModels } from "../../integration-models.js";
@@ -53,6 +56,7 @@ export async function settingsRoutes({
         await body(req),
         resolvedMainModel(store.config),
         fetcher,
+        globalKeys(store.config),
       ),
     );
   }
@@ -80,6 +84,9 @@ export async function settingsRoutes({
         !["openai", "compatible", "ollama"].includes(b.model.provider)
       )
         throw fail("Unknown model provider.");
+      const legacyOpenAIKey = savedOpenAIKey(next);
+      if (legacyOpenAIKey && !Object.hasOwn(next.apiKeys || {}, "openai"))
+        updateGlobalKeys(next, { openai: legacyOpenAIKey });
       const old = next.model;
       next.model = {
         ...old,
@@ -96,6 +103,11 @@ export async function settingsRoutes({
         next.model.apiKey = "";
       next.model.model = text(next.model.model, 120);
       next.model.apiKey = text(next.model.apiKey, 1000);
+      if (usesOfficialOpenAI(next.model)) {
+        if (b.model.clearApiKey) updateGlobalKeys(next, { openai: null });
+        else if (typeof b.model.apiKey === "string" && b.model.apiKey.trim())
+          updateGlobalKeys(next, { openai: next.model.apiKey });
+      }
     }
     store.config = next;
     store.saveConfig();

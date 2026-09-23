@@ -17,6 +17,7 @@ stable while implementation details are split by responsibility.
 | `server/home-assistant.js` | Home service metadata and tools; compatibility exports for integrations. |
 | `server/home/` | Configuration, HTTP transport, permissions, state visibility and typed commands. |
 | `server/registry.js` | Integration lifecycle, current availability, tool execution and single-use confirmations. |
+| `server/global-keys.js` | Shared credential resolution, explicit overrides, and key removal without reviving old copies. |
 | `server/chat.js` | Conversation orchestration and model rounds. |
 | `server/conversation-context.js` | Bounded recent history and server-generated execution evidence. |
 
@@ -24,6 +25,11 @@ Authentication stays in the shared request handler. Account creation and login
 run after host/origin validation and before the session requirement; other API
 routes run after that requirement. Keep feature-specific owner checks when a
 device token must not grant configuration access.
+
+Storage restores the internal Home Assistant adapter alias whenever configuration
+is loaded or replaced. Settings edits must preserve the same core home connection
+and entity permissions. Required integration dependencies use one availability
+check for settings, status, routes, and tools.
 
 ## Browser interface
 
@@ -50,6 +56,9 @@ dependency.
   builders in stable order. Schemas, entity visibility, home commands, memory,
   display, rules and other domains have their own modules. Automation helpers,
   public record shapes and database bindings live in `server/automations/`.
+  `server/voice-input.js` owns microphone availability checks before and after
+  transcription for local capture and both glasses companions. Speech output
+  rechecks current settings before queued playback and retries.
 - **Continuity Memory:** `src/dmr-store.js` owns transactions and temporal graph
   updates. `schema.js` owns migrations, `records.js` owns record conversion, and
   `retrieval.js` owns ranking and diversity selection.

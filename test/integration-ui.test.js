@@ -104,6 +104,10 @@ test("enabled state stays distinct from connectivity and dependency readiness", 
     ui.integrationStatus({ id: "tv", enabled: true, configured: false }).label,
     "Enabled · setup needed",
   );
+  assert.equal(
+    ui.integrationStatus({ id: "tv", enabled: true, configured: true, status: "dependency disabled" }).label,
+    "Enabled · dependency needed",
+  );
 });
 
 test("settings preserve typed false and zero, retain blank secrets, and parse structures", () => {

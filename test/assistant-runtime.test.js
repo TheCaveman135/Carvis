@@ -9,7 +9,8 @@ import { createApp } from '../server/index.js';
 import { Store } from '../server/store.js';
 import { createAccount, issueSession } from '../server/auth.js';
 import { runtimeFor, AssistantRuntime } from '../server/assistant-runtime.js';
-import { SECTION_OWNERS, integrationConfigFromLegacy } from '../server/assistant-config.js';
+import { SECTION_OWNERS, integrationConfigFromLegacy, projectRuntimeConfig } from '../server/assistant-config.js';
+import { updateGlobalKeys } from '../server/global-keys.js';
 import { DEFAULTS } from '../integrations/assistant-runtime/defaults.js';
 
 async function application(t, { engine = false, devices = false } = {}) {
@@ -301,7 +302,7 @@ test('full glasses pipeline inherits global speech keys and microphone selection
  assert.equal(cfg.stt.deepgramKey,'fixture-global-speech-one');
  assert.equal(cfg.voice.inputDevice,'even-glasses');
  const response=await app.request('/api/voice/audio',{method:'POST',token:'fixture-private-glasses-token',data:{}});
- assert.equal(response.status,200);assert.equal((await response.json()).reason,'microphone muted');
+ assert.equal(response.status,200);assert.match((await response.json()).reason,/microphone.*muted/i);
  const rotated=await app.request('/api/settings',{owner:true,method:'POST',data:{apiKeys:{deepgram:'fixture-global-speech-two'}}});
  assert.equal(rotated.status,200);
  cfg=await app.runtime.call('config');assert.equal(cfg.stt.deepgramKey,'fixture-global-speech-two');
@@ -310,4 +311,25 @@ test('full glasses pipeline inherits global speech keys and microphone selection
  assert(!state.includes('fixture-global-speech-two'));
  const item=JSON.parse(state).integrations.find(i=>i.id==='even-realities');
  assert(!item.fields.some(f=>f.key==='speechApiKey'));
+});
+
+test('late runtime saves cannot turn old global keys into integration overrides', async t => {
+ const app = await application(t);
+ app.store.config.integrations = integrationConfigFromLegacy(structuredClone(DEFAULTS));
+ updateGlobalKeys(app.store.config, { deepgram: 'fixture-original-key', assemblyai: 'fixture-original-aai', gemini: 'fixture-original-gemini' });
+ const oldWorkerConfig = projectRuntimeConfig(app.store);
+ updateGlobalKeys(app.store.config, { deepgram: 'fixture-rotated-key', assemblyai: null, gemini: null });
+ app.runtime.persistRuntimeConfig(oldWorkerConfig);
+ assert.equal(app.store.config.integrations.voice.config.stt__deepgramKey, '');
+ assert.equal(app.store.config.integrations.voice.config.stt__assemblyaiKey, '');
+ assert.equal(app.store.config.integrations['web-search'].config.search__geminiKey, '');
+ const next = projectRuntimeConfig(app.store);
+ assert.equal(next.stt.deepgramKey, 'fixture-rotated-key');
+ assert.equal(next.stt.assemblyaiKey, '');
+ assert.equal(next.search.geminiKey, '');
+ assert.equal(app.store.plugin('assistant-engine').get('legacyConfig').stt.deepgramKey, '');
+ app.runtime.persistRuntimeConfig(oldWorkerConfig, { stt: { deepgramKey: 'fixture-deliberate-override' } });
+ assert.equal(app.store.config.integrations.voice.config.stt__deepgramKey, 'fixture-deliberate-override');
+ app.runtime.persistRuntimeConfig(oldWorkerConfig);
+ assert.equal(projectRuntimeConfig(app.store).stt.deepgramKey, 'fixture-deliberate-override');
 });

@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { validate } from "../validation.js";
 import { projectRuntimeConfig } from "../assistant-config.js";
-import { Transcriber } from "../../integrations/assistant-runtime/server/stt.js";
+import { Transcriber, speechProvider, wavFromPcm } from "../../integrations/assistant-runtime/server/stt.js";
+import { voiceInputIssue, transcribeVoiceInput } from "../../integrations/assistant-runtime/server/voice-input.js";
 
 const stateKey = "hud";
 const emptyState = () => ({
@@ -242,8 +243,7 @@ function voiceConfig(ctx) {
 }
 function voiceAvailable(ctx) {
   const cfg = voiceConfig(ctx);
-  const key = cfg?.stt?.engine === "assemblyai" ? cfg.stt.assemblyaiKey : cfg?.stt?.deepgramKey;
-  return Boolean(cfg?.voice?.enabled && cfg.stt?.enabled && key && !cfg.voice.inputMuted && (!cfg.voice.inputDevice || cfg.voice.inputDevice === "even-glasses"));
+  return !voiceInputIssue(cfg, "even-glasses") && Boolean(speechProvider(cfg).key);
 }
 function publicState(state, ctx) {
   return {
@@ -289,29 +289,16 @@ export function pcmToWav(base64) {
     pcm.length >= 3200 && pcm.length <= 960000 && pcm.length % 2 === 0,
     "Audio must be 16 kHz, mono, signed 16-bit PCM.",
   );
-  const header = Buffer.alloc(44);
-  header.write("RIFF");
-  header.writeUInt32LE(pcm.length + 36, 4);
-  header.write("WAVEfmt ", 8);
-  header.writeUInt32LE(16, 16);
-  header.writeUInt16LE(1, 20);
-  header.writeUInt16LE(1, 22);
-  header.writeUInt32LE(16000, 24);
-  header.writeUInt32LE(32000, 28);
-  header.writeUInt16LE(2, 32);
-  header.writeUInt16LE(16, 34);
-  header.write("data", 36);
-  header.writeUInt32LE(pcm.length, 40);
-  return Buffer.concat([header, pcm]);
+  return wavFromPcm(pcm);
 }
 async function transcribe(ctx, body) {
   assert(voiceAvailable(ctx), "Enable Voice input & chat, set its global speech key, select Even glasses as the microphone, and unmute it.");
   ctx.signal?.throwIfAborted();
   const pcm = pcmToWav(body.pcmBase64).subarray(44);
   const transcriber = new Transcriber(() => voiceConfig(ctx), { fetch: ctx.fetch, signal: ctx.signal });
-  const result = await transcriber.transcribe(pcm);
+  const result = await transcribeVoiceInput({ getConfig: () => voiceConfig(ctx), transcriber, pcm, inputDevice: "even-glasses", signal: ctx.signal });
   // A settings change while transcription is pending revokes microphone access.
-  assert(voiceAvailable(ctx), "Glasses microphone was muted, changed, or disabled during transcription.");
+  assert(!result.ignored && voiceAvailable(ctx), "Glasses microphone was muted, changed, or disabled during transcription.");
   ctx.signal?.throwIfAborted();
   const text = trim(result.text, 12000);
   assert(text, "No speech was recognized. Try again or type on your phone.");

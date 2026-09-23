@@ -30,6 +30,8 @@ export function createIntegrationMetadata({ getState }) {
       typeof integration.status === "object"
         ? integration.status?.state || integration.status?.status
         : integration.status;
+    if (status === "dependency disabled")
+      return { label: "Enabled · dependency needed", tone: "attention" };
     if (["error", "failed", "unavailable", "needs attention"].includes(status))
       return { label: "Enabled · needs attention", tone: "attention" };
     if (integration.configured === false)

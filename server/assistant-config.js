@@ -1,4 +1,4 @@
-import { globalKeys, resolvedMainModel } from './global-keys.js';
+import { resolveServiceKey, resolvedMainModel } from './global-keys.js';
 import { DEFAULTS } from '../integrations/assistant-runtime/defaults.js';
 
 export const SECTION_OWNERS = {
@@ -131,16 +131,25 @@ export function projectRuntimeConfig(store) {
       for (const key of sections) if (cfg[key] && 'enabled' in cfg[key] && saved[key]?.enabled === undefined && config(id)[`${key}__enabled`] === undefined) cfg[key].enabled = true;
     }
   }
-  const sharedKeys = globalKeys(store.config);
-  cfg.stt.deepgramKey = config('voice').stt__deepgramKey || sharedKeys.deepgram || cfg.stt.deepgramKey || '';
-  cfg.stt.assemblyaiKey = config('voice').stt__assemblyaiKey || sharedKeys.assemblyai || cfg.stt.assemblyaiKey || '';
-  cfg.search.geminiKey = config('web-search').search__geminiKey || sharedKeys.gemini || cfg.search.geminiKey || '';
+  cfg.stt.deepgramKey = resolveServiceKey(store.config, 'deepgram', { override: config('voice').stt__deepgramKey, legacy: cfg.stt.deepgramKey });
+  cfg.stt.assemblyaiKey = resolveServiceKey(store.config, 'assemblyai', { override: config('voice').stt__assemblyaiKey, legacy: cfg.stt.assemblyaiKey });
+  cfg.search.geminiKey = resolveServiceKey(store.config, 'gemini', { override: config('web-search').search__geminiKey, legacy: cfg.search.geminiKey });
   cfg.server = { host: '127.0.0.1', port: 0 };
   return cfg;
 }
 export function runtimeEnvironment(store) {
   const env = store.plugin('assistant-engine').get('environment', {});
   const engine = store.config.integrations['assistant-engine']?.config || {};
-  const keys = globalKeys(store.config);
-  return { ...env, OPENAI_API_KEY: engine.openaiKey || keys.openai || env.OPENAI_API_KEY || '', ANTHROPIC_API_KEY: engine.anthropicKey || keys.anthropic || env.ANTHROPIC_API_KEY || '', ATLAS_TOKEN: store.config.integrations.atlas?.config?.atlasToken || env.ATLAS_TOKEN || '', CARVIS_PRIMARY_API_KEY: resolvedMainModel(store.config).apiKey };
+  const voice = store.config.integrations.voice?.config || {};
+  const search = store.config.integrations['web-search']?.config || {};
+  return {
+    ...env,
+    OPENAI_API_KEY: resolveServiceKey(store.config, 'openai', { override: engine.openaiKey, legacy: env.OPENAI_API_KEY }),
+    ANTHROPIC_API_KEY: resolveServiceKey(store.config, 'anthropic', { override: engine.anthropicKey, legacy: env.ANTHROPIC_API_KEY }),
+    DEEPGRAM_API_KEY: resolveServiceKey(store.config, 'deepgram', { override: voice.stt__deepgramKey, legacy: env.DEEPGRAM_API_KEY }),
+    ASSEMBLYAI_API_KEY: resolveServiceKey(store.config, 'assemblyai', { override: voice.stt__assemblyaiKey, legacy: env.ASSEMBLYAI_API_KEY }),
+    GEMINI_API_KEY: resolveServiceKey(store.config, 'gemini', { override: search.search__geminiKey, legacy: env.GEMINI_API_KEY }),
+    ATLAS_TOKEN: store.config.integrations.atlas?.config?.atlasToken || env.ATLAS_TOKEN || '',
+    CARVIS_PRIMARY_API_KEY: resolvedMainModel(store.config).apiKey,
+  };
 }

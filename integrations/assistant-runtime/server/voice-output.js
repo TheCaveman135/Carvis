@@ -32,11 +32,8 @@ export class VoiceOutput {
 
   /** Route an explicit timer/protocol/model speech action through the same dock-aware path. */
   async speak(text, { source = 'carvis', automatic = false } = {}) {
-    const cfg = this.getConfig();
-    const speech = cfg.speech || {};
     const body = String(text || '').trim();
-    if (cfg.integrations && !enabled(cfg,'speech')) return {skipped:true};
-    if (automatic && speech.autoReplies !== true) return { skipped: true };
+    if (!this.#available(automatic)) return { skipped: true };
     if (!body || (automatic && (this.pendingReplies.has(body) || this.#duplicate(body)))) return { skipped: true };
     if (automatic) this.pendingReplies.add(body);
     this.queued++;
@@ -44,8 +41,7 @@ export class VoiceOutput {
     const run = () => {
       // A line can wait behind another speaker request. Honor settings as
       // they stand when playback starts, including replies being switched off.
-      const current = this.getConfig().speech || {};
-      if (automatic && current.autoReplies !== true) return { skipped: true };
+      if (!this.#available(automatic)) return { skipped: true };
       return this.#deliver(body, source, automatic);
     };
     const result = this.outputTail.then(run, run)
@@ -77,14 +73,19 @@ export class VoiceOutput {
     return { queued: this.queued, lastDelivery: this.lastDelivery };
   }
 
+  #available(automatic) {
+    const config = this.getConfig();
+    return (!config.integrations || enabled(config, 'speech')) && config.speech?.outputMode !== 'disabled' && (!automatic || config.speech?.autoReplies === true);
+  }
+
   async #deliver(body, source, automatic) {
     const chunks = speechChunks(body);
     let spoken;
     let recovered = false;
     for (let i = 0; i < chunks.length; i++) {
       const current = this.getConfig().speech || {};
-      if (automatic && current.autoReplies !== true) return { skipped: true, chunks: i };
-      spoken = await this.#route(chunks[i], current.outputMode || 'physical_then_ha', source);
+      if (!this.#available(automatic)) return { skipped: true, chunks: i };
+      spoken = await this.#route(chunks[i], current.outputMode || 'physical_then_ha', source, automatic);
       recovered ||= spoken?.recovered === true;
       if (!spoken?.success) return { ...spoken, chunks: i };
       if (i < chunks.length - 1 && spoken.target !== 'physical_core' && !spoken.streamFinished) {
@@ -94,7 +95,7 @@ export class VoiceOutput {
     return { ...spoken, recovered, chunks: chunks.length, lastChunk: chunks.at(-1) };
   }
 
-  async #route(body, mode, source) {
+  async #route(body, mode, source, automatic) {
     if (mode === 'local_only') return this.localSpeaker?.(body,this.getConfig().speech?.localDevice) || {success:false,error:'Local speaker unavailable'};
     if (mode === 'phone_only') return this.phoneSpeaker?.speak(body) || {success:false,error:'Phone speaker unavailable'};
     if (mode !== 'ha_only') {
@@ -102,15 +103,21 @@ export class VoiceOutput {
       if (physical) return { success: true, target: 'physical_core', ...physical };
       if (mode === 'physical_only') return { success: false, error: 'no physical Carvis speaker is connected' };
     }
-    return this.#speakHomeAssistant(body);
+    return this.#speakHomeAssistant(body, automatic, mode);
   }
 
-  async #speakHomeAssistant(message) {
+  async #speakHomeAssistant(message, automatic, mode) {
     const cfg = this.getConfig();
     const speaker = String(cfg.speech?.mediaPlayer || '').trim();
     const provider = String(cfg.speech?.ttsEntity || '').trim();
-    const selected = new Set([...(cfg.entities?.observed || []), ...(cfg.entities?.controlled || [])]);
-    if (!speaker || !provider || !selected.has(speaker) || !cfg.entities?.controlled?.includes(speaker)) {
+    const permitted = () => {
+      const current = this.getConfig();
+      return this.#available(automatic) && (!current.integrations || enabled(current, 'home-assistant')) &&
+        (current.speech?.outputMode || 'physical_then_ha') === mode &&
+        current.speech?.mediaPlayer?.trim() === speaker && current.speech?.ttsEntity?.trim() === provider &&
+        current.entities?.controlled?.includes(speaker);
+    };
+    if (!speaker || !provider || !permitted()) {
       return { success: false, error: 'no selected Home Assistant speech speaker is configured' };
     }
     let plan;
@@ -140,11 +147,13 @@ export class VoiceOutput {
       // while still reporting its normal state as idle. HA surfaces that only
       // as a generic HTTP 500. Reset *this dedicated Carvis output* once and
       // retry the exact same speech; unrelated HA failures never get a retry.
-      if (/\bHA 500\b/.test(String(err?.message || ''))) {
+      if (streamFinished && /\bHA 500\b/.test(String(err?.message || ''))) {
         try {
+          if (!permitted()) return { skipped: true };
           log('warn', `Carvis speaker ${speaker} had a stuck playback stream; resetting it once`);
           await this.ha.callService('media_player', 'media_stop', { entity_id: speaker });
           await this.sleep(350);
+          if (!permitted()) return { skipped: true };
           await this.ha.callService(plan.domain, plan.service, plan.data, ttsOptions);
           return { success: true, target: speaker, recovered: true, streamFinished };
         } catch (recoveryErr) {
@@ -158,6 +167,7 @@ export class VoiceOutput {
       if (/\bHA (?:502|503|504)\b|fetch failed|ECONNRESET|ECONNREFUSED/i.test(String(err?.message || ''))) {
         try {
           await this.sleep(750);
+          if (!permitted()) return { skipped: true };
           await this.ha.callService(plan.domain, plan.service, plan.data, ttsOptions);
           return { success: true, target: speaker, recovered: true, streamFinished };
         } catch (retryErr) {

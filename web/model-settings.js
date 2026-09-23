@@ -1,7 +1,23 @@
 import { el, input, field, errorText, formNotice } from "./ui.js";
 
+/** Read only public credential flags; never move keys between provider inputs. */
+export function modelKeyStatus(model, apiKeys, { provider, baseUrl, clear = false }) {
+  const normalize = (value) => {
+    try {
+      return new URL(value).toString().replace(/\/+$/, "");
+    } catch {
+      return String(value || "").trim();
+    }
+  };
+  const sameConnection = provider === model.provider &&
+    normalize(provider === "openai" ? "https://api.openai.com/v1" : baseUrl) ===
+      normalize(model.baseUrl);
+  const shared = !clear && provider === "openai" && apiKeys?.openai?.saved === true;
+  return { shared, saved: Boolean(shared || (sameConnection && model.hasApiKey && !clear)) };
+}
+
 /** Provider connection, model discovery, and saved-key controls. */
-export function renderModelSettings({ state, api, refreshState }) {
+export function renderModelSettings({ state, api, refreshState, onSaved = () => {} }) {
   const model = state.data.model || {};
   const provider = el(
     "select",
@@ -107,17 +123,17 @@ export function renderModelSettings({ state, api, refreshState }) {
     modelListStatus.textContent = "Waiting for connection details…";
   };
   let discoveryTimer;
+  const keyStatus = () => modelKeyStatus(model, state.data.apiKeys, {
+    provider: provider.value,
+    baseUrl: baseUrl.value,
+    clear: clearKey.checked,
+  });
   const scheduleModels = () => {
     clearTimeout(discoveryTimer);
     modelListVersion++;
     const ready =
       provider.value === "openai"
-        ? Boolean(
-            apiKey.value ||
-              (model.hasApiKey &&
-                model.provider === "openai" &&
-                !clearKey.checked),
-          )
+        ? Boolean(apiKey.value || keyStatus().saved)
         : Boolean(baseUrl.value);
     if (!ready) {
       modelListStatus.textContent =
@@ -133,6 +149,7 @@ export function renderModelSettings({ state, api, refreshState }) {
     queueMicrotask(scheduleModels);
   });
   baseUrl.addEventListener("input", () => {
+    apiKey.value = "";
     invalidateModels();
     scheduleModels();
   });
@@ -145,37 +162,36 @@ export function renderModelSettings({ state, api, refreshState }) {
   const keyField = field(
     "API key",
     apiKey,
-    "Stored on your Carvis server. Changing the provider or API URL clears the saved key unless you enter a new one.",
+    "OpenAI uses your Global API key; entering or removing it here updates the shared key. Other providers use a separate connection key, which is cleared when you change provider or API URL.",
   );
   const clearKey = input("clearApiKey", "", "checkbox");
+  const clearLabel = el("span", { class: "field-label" });
   const clearField = el(
     "label",
     { class: "field checkbox" },
     clearKey,
-    el("span", { class: "field-label" }, "Remove saved API key"),
+    clearLabel,
   );
-  clearField.hidden = !model.hasApiKey;
-  clearKey.addEventListener("change", scheduleModels);
   const syncKeyPlaceholder = () => {
-    const normalize = (value) => {
-      try {
-        return new URL(value).toString().replace(/\/+$/, "");
-      } catch {
-        return String(value).trim();
-      }
-    };
-    const nextUrl =
-      provider.value === "openai" ? "https://api.openai.com/v1" : baseUrl.value;
-    const sameConnection =
-      provider.value === model.provider &&
-      normalize(nextUrl) === normalize(model.baseUrl);
+    const status = keyStatus();
+    clearField.hidden = !(provider.value === "openai" ? state.data.apiKeys?.openai?.saved : model.hasApiKey && provider.value === model.provider);
+    clearLabel.textContent = provider.value === "openai"
+      ? "Remove shared OpenAI key"
+      : "Remove this connection’s saved key";
+    keyField.querySelector(".field-label").textContent = provider.value === "openai" ? "Global OpenAI API key" : "API key";
     apiKey.placeholder =
-      model.hasApiKey && sameConnection
+      status.shared
+        ? "Using global OpenAI key"
+        : status.saved
         ? "Saved · leave blank to keep"
         : model.hasApiKey
           ? "Enter a key for this connection"
           : "Paste your API key";
   };
+  clearKey.addEventListener("change", () => {
+    syncKeyPlaceholder();
+    scheduleModels();
+  });
   baseUrl.addEventListener("input", syncKeyPlaceholder);
   const syncProvider = () => {
     baseField.hidden = provider.value === "openai";
@@ -189,6 +205,8 @@ export function renderModelSettings({ state, api, refreshState }) {
   };
   provider.addEventListener("change", () => {
     if (provider.value !== model.provider) baseUrl.value = "";
+    apiKey.value = "";
+    clearKey.checked = false;
     syncProvider();
   });
   syncProvider();
@@ -230,9 +248,9 @@ export function renderModelSettings({ state, api, refreshState }) {
           apiKey.value = "";
           await refreshState();
           Object.assign(model, state.data.model);
-          syncKeyPlaceholder();
-          clearField.hidden = !state.data.model.hasApiKey;
           clearKey.checked = false;
+          syncKeyPlaceholder();
+          onSaved();
           formNotice(
             modelFeedback,
             "Model settings saved. Start a conversation to use them.",
@@ -261,7 +279,12 @@ export function renderModelSettings({ state, api, refreshState }) {
     modelFeedback,
     saveModel,
   );
-  if (model.hasApiKey || model.provider === "ollama")
+  modelForm.refreshModels = () => {
+    Object.assign(model, state.data.model);
+    syncKeyPlaceholder();
+    scheduleModels();
+  };
+  if (model.hasApiKey || state.data.apiKeys?.openai?.saved || model.baseUrl)
     queueMicrotask(scheduleModels);
 
   return modelForm;

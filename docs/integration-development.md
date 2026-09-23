@@ -35,9 +35,10 @@ export default {
 
 Sanitizers run even when an integration has never been configured or has been disabled. In that case they receive `enabled:false` and `config:{}` with no credentials. They must tolerate this and remove any formerly accessible resource identifiers from recalled history. Sanitizers must not make network requests or activate capabilities. Before every model round, Carvis refreshes enabled tools and integration context and sanitizes the full history again.
 
-Optional metadata includes `dependsOn` (Integration IDs), `setupSteps` (plain
-language instructions), and `homeAssistant: {requirement, note}`. The requirement
-is `required`, `recommended`, or `not-required` and determines the card group.
+Optional metadata includes `dependsOn` (integration IDs or `{id, optional:true}`
+for an optional dependency) and `setupSteps` (plain language instructions).
+Integrations appear in one grid. Home Assistant is a core service; integrations
+that require it declare `home-assistant` as a required dependency.
 Use `controls: {module, dependsOn}` for a native management panel. `module` is a
 same-origin JavaScript URL exporting `mount(ui)`, which receives `root`,
 `integration`, `section` (`controls` or `activity`), an AbortSignal, UI helpers,

@@ -44,7 +44,12 @@ export class Registry {
   available(id, seen = new Set()) {
     if (!this.modules.has(id) || !this.store.config.integrations[id]?.enabled || seen.has(id)) return false;
     seen.add(id);
-    return (this.modules.get(id)?.dependsOn || []).every(d => d.optional || this.available(typeof d === 'string' ? d : d.id, new Set(seen)));
+    return !this.unavailableDependency(id, seen);
+  }
+  unavailableDependency(id, seen = new Set([id])) {
+    const dependency = (this.modules.get(id)?.dependsOn || []).find(d =>
+      !d.optional && !this.available(typeof d === 'string' ? d : d.id, new Set(seen)));
+    return typeof dependency === 'string' ? dependency : dependency?.id;
   }
   async load(directory) {
     let items;
@@ -63,11 +68,12 @@ export class Registry {
     }
   }
   getConfig(id) {
+    if (!this.modules.has(id)) throw Error("Integration not found.");
     if (!this.store.config.integrations[id]?.enabled)
       throw Error(`${id} is not enabled.`);
-    for (const dependency of this.modules.get(id)?.dependsOn || [])
-      if (!this.store.config.integrations[typeof dependency === 'string' ? dependency : dependency.id]?.enabled)
-        throw Error(`Enable ${typeof dependency === 'string' ? dependency : dependency.id} before using ${id}.`);
+    const dependency = this.unavailableDependency(id);
+    if (dependency)
+      throw Error(`Set up ${this.modules.get(dependency)?.name || dependency} and its required integrations before using ${id}.`);
     return structuredClone(this.store.config.integrations[id].config || {});
   }
   contextFor(id, { signal } = {}) {
@@ -98,7 +104,7 @@ export class Registry {
   list() {
     return [...this.modules.values()].map((m) => {
       const entry = this.store.config.integrations[m.id] || {};
-      const missingDependency = (m.dependsOn || []).find(d => !d.optional && !this.store.config.integrations[typeof d === 'string' ? d : d.id]?.enabled);
+      const missingDependency = this.unavailableDependency(m.id);
       const configured =
         !!entry.config &&
         (m.fields || [])
@@ -156,11 +162,9 @@ export class Registry {
     const enabled = patch.enabled ?? old.enabled;
     if (typeof enabled !== "boolean")
       throw Error("Enabled must be true or false.");
-    if (enabled) for (const dependency of m.dependsOn || []) {
-      const key = typeof dependency === 'string' ? dependency : dependency.id;
-      if (!dependency.optional && !this.store.config.integrations[key]?.enabled)
-        throw Error(`Enable ${this.modules.get(key)?.name || key} first.`);
-    }
+    const dependency = enabled && this.unavailableDependency(id);
+    if (dependency)
+      throw Error(`Set up ${this.modules.get(dependency)?.name || dependency} and its required integrations first.`);
     if (enabled) next = await m.validateConfig(next);
     this.store.config.integrations[id] = { enabled, config: next };
     this.store.saveConfig();

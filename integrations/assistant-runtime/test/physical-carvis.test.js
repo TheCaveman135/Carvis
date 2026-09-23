@@ -100,6 +100,7 @@ test('a stuck Apple TV TTS stream is reset once and retried on the dedicated spe
     physicalCarvis: physical,
     sleep: async () => {},
     ha: {
+      platformFor: () => 'apple_tv',
       callService: async (...args) => {
         calls.push(args);
         if (args[0] === 'tts' && firstTts) {
@@ -260,4 +261,51 @@ test('Carvis passes its configured voice to TTS without changing provider defaul
   const result=await output.speakReply({kind:'reply',text:'At your service, sir.'});
   assert.equal(result.success,true);
   assert.deepEqual(calls[0][2].options,{voice:'fable'});
+});
+
+test('disabling speech drops queued explicit and automatic replies', async () => {
+  for (const automatic of [false,true]) {
+    const cfg={...config(),integrations:{speech:true,'home-assistant':true}};
+    let release;
+    const calls=[];
+    const output=new VoiceOutput({getConfig:()=>cfg,ha:{callService:async(...args)=>calls.push(args)},sleep:()=>new Promise(resolve=>{release=resolve;})});
+    await output.speak('First line.');
+    await new Promise(resolve=>setImmediate(resolve));
+    const queued=output.speak('Do not play.',{automatic});
+    cfg.integrations.speech=false;
+    release();
+    assert.deepEqual(await queued,{skipped:true});
+    assert.equal(calls.length,1);
+  }
+});
+
+test('disabling speech between chunks stops the rest of a long reply',async()=>{
+  const cfg={...config(),integrations:{speech:true,'home-assistant':true}};
+  let calls=0;
+  const output=new VoiceOutput({getConfig:()=>cfg,ha:{callService:async()=>{calls++;}},sleep:async()=>{cfg.integrations.speech=false;}});
+  const result=await output.speak('A long sentence. '.repeat(50));
+  assert.equal(result.skipped,true);assert.equal(result.chunks,1);assert.equal(calls,1);
+});
+
+for (const revoked of ['speaker','provider','home','speech','route']) {
+  test(`speech recovery rechecks ${revoked} access before retrying`,async()=>{
+    const cfg={...config(),integrations:{speech:true,'home-assistant':true}};
+    let calls=0;
+    const output=new VoiceOutput({getConfig:()=>cfg,ha:{callService:async()=>{calls++;throw Error('HA 503: unavailable');}},sleep:async()=>{
+      if(revoked==='speaker')cfg.entities.controlled=[];
+      if(revoked==='provider')cfg.speech.ttsEntity='tts.other';
+      if(revoked==='home')cfg.integrations['home-assistant']=false;
+      if(revoked==='speech')cfg.integrations.speech=false;
+      if(revoked==='route')cfg.speech.outputMode='local_only';
+    }});
+    assert.equal((await output.speak('Do not retry.')).skipped,true);
+    assert.equal(calls,1);
+  });
+}
+
+test('ordinary speaker failures never reset unrelated media playback',async()=>{
+  const calls=[];
+  const output=new VoiceOutput({getConfig:()=>config(),ha:{platformFor:()=> 'cast',callService:async(domain,service)=>{calls.push(`${domain}.${service}`);throw Error('HA 500: unavailable');}}});
+  assert.equal((await output.speak('Failed playback.')).success,false);
+  assert.deepEqual(calls,['tts.speak']);
 });

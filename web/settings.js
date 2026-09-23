@@ -14,7 +14,7 @@ import { modelRouterEntries } from "./model-router.js";
 import { connectionPath } from "./api.js";
 
 export function createSettingsView({ state, api, refreshState }) {
-  function renderGlobalKeys() {
+  function renderGlobalKeys(onSaved) {
     const feedback = el("div"),
       controls = [];
     const form = el(
@@ -34,36 +34,31 @@ export function createSettingsView({ state, api, refreshState }) {
       ["assemblyai", "AssemblyAI"],
       ["gemini", "Google Gemini"],
     ]) {
-      const status = state.data.apiKeys?.[id];
       const key = input(id, "", "password", {
         autocomplete: "new-password",
-        placeholder: status?.saved
-          ? "Saved · leave blank to keep"
-          : "Optional API key",
       });
       const clear = input(`remove-${id}`, "", "checkbox");
-      form.append(
-        field(
-          label,
-          key,
-          status?.fromMainProvider
-            ? "Using your saved OpenAI key from the main model settings."
-            : status?.saved
-              ? "Shared key saved."
-              : "Add only the services you use.",
-        ),
+      const description = el("p", { class: "field-description" });
+      const keyField = field(label, key);
+      keyField.append(description);
+      const clearField = el(
+        "label",
+        { class: "field checkbox" },
+        clear,
+        el("span", {}, `Remove shared ${label} key`),
       );
-      if (status?.saved && !status.fromMainProvider)
-        form.append(
-          el(
-            "label",
-            { class: "field checkbox" },
-            clear,
-            el("span", {}, `Remove shared ${label} key`),
-          ),
-        );
-      controls.push({ id, key, clear });
+      form.append(keyField, clearField);
+      controls.push({ id, key, clear, description, clearField });
     }
+    form.refreshKeys = () => {
+      for (const control of controls) {
+        const status = state.data.apiKeys?.[control.id];
+        control.key.placeholder = status?.saved ? "Saved · leave blank to keep" : "Optional API key";
+        control.description.textContent = status?.saved ? "Shared key saved." : "Add only the services you use.";
+        control.clearField.hidden = !status?.saved;
+      }
+    };
+    form.refreshKeys();
     const save = el(
       "button",
       { class: "button primary", type: "submit" },
@@ -81,7 +76,12 @@ export function createSettingsView({ state, api, refreshState }) {
         );
         await api("/api/settings", { method: "POST", body: { apiKeys } });
         await refreshState();
-        form.replaceWith(renderGlobalKeys());
+        for (const control of controls) {
+          control.key.value = "";
+          control.clear.checked = false;
+        }
+        form.refreshKeys();
+        onSaved();
         toast("Global API keys saved.");
       } catch (error) {
         formNotice(feedback, errorText(error));
@@ -93,6 +93,7 @@ export function createSettingsView({ state, api, refreshState }) {
   }
 
   function renderModelRouter() {
+    const refreshModels = [];
     const card = el(
       "section",
       { class: "settings-card full" },
@@ -173,16 +174,11 @@ export function createSettingsView({ state, api, refreshState }) {
         const select = el("select", {
           "aria-label": `${integration.name}: ${label}`,
         });
-        const custom = input(definition.key, current, "text", {
-          maxlength: 120,
-          placeholder: "Model ID from this service",
-        });
-        const customField = field("Custom model ID", custom);
-        customField.hidden = true;
+        let modelValue = current;
         const status = el("p", { class: "small muted", role: "status" });
         let revision = 0;
         const populate = (models = []) => {
-          const value = custom.value;
+          const value = modelValue;
           const choices = [...new Set([...(value ? [value] : []), ...models])];
           select.replaceChildren(
             el("option", { value: "" }, "Service default / not set"),
@@ -195,10 +191,9 @@ export function createSettingsView({ state, api, refreshState }) {
             ),
           );
           select.value = value;
-          customField.hidden = true;
         };
         select.addEventListener("change", () => {
-          custom.value = select.value;
+          modelValue = select.value;
         });
         let providerSelect;
         const discover = async () => {
@@ -221,6 +216,7 @@ export function createSettingsView({ state, api, refreshState }) {
             if (version === revision) status.textContent = errorText(error);
           }
         };
+        refreshModels.push(discover);
         if (providerField) {
           const options = new Map([
             ["carvis-primary", "Main provider (from Carvis Settings)"],
@@ -237,7 +233,7 @@ export function createSettingsView({ state, api, refreshState }) {
           );
           providerSelect.value = savedProvider || "carvis-primary";
           providerSelect.addEventListener("change", () => {
-            custom.value = "";
+            modelValue = "";
             void discover();
           });
           roleFields.append(field("Provider", providerSelect));
@@ -253,12 +249,11 @@ export function createSettingsView({ state, api, refreshState }) {
               label.replace(/: model$/i, "").replace(/^Model$/, "Local model"),
             ),
             roleFields,
-            customField,
             status,
           ),
         );
         updates.push(() => ({
-          ...{ [definition.key]: custom.value.trim() },
+          [definition.key]: modelValue.trim(),
           ...(providerSelect ? { [providerKey]: providerSelect.value } : {}),
         }));
         void discover();
@@ -302,6 +297,9 @@ export function createSettingsView({ state, api, refreshState }) {
       } else form.addEventListener("submit", (event) => event.preventDefault());
       card.append(row);
     }
+    card.refreshModels = () => {
+      if (card.isConnected) for (const refresh of refreshModels) void refresh();
+    };
     return card;
   }
 
@@ -437,7 +435,15 @@ export function createSettingsView({ state, api, refreshState }) {
       profileFeedback,
       saveProfile,
     );
-    const modelForm = renderModelSettings({ state, api, refreshState });
+    const router = renderModelRouter();
+    const globalKeys = renderGlobalKeys(() => {
+      modelForm.refreshModels();
+      router.refreshModels();
+    });
+    const modelForm = renderModelSettings({ state, api, refreshState, onSaved: () => {
+      globalKeys.refreshKeys();
+      router.refreshModels();
+    } });
     const memoryCard = el(
       "section",
       { class: "settings-card full" },
@@ -483,8 +489,8 @@ export function createSettingsView({ state, api, refreshState }) {
           ),
           profileForm,
           modelForm,
-          renderGlobalKeys(),
-          renderModelRouter(),
+          globalKeys,
+          router,
           memoryCard,
         ),
       ),

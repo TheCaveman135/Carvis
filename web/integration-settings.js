@@ -105,24 +105,13 @@ export function createIntegrationSettings({
         ),
       );
     if (integration.id === "even-realities") {
-      const voice = state.data.integrations.find(item => item.id === "voice");
-      const speech = state.data.integrations.find(item => item.id === "speech");
-      const cfg = voice?.config || {};
-      const provider = cfg.stt__engine === "assemblyai" ? "assemblyai" : "deepgram";
-      const keyReady = state.data.apiKeys?.[provider]?.saved || cfg[provider === "assemblyai" ? "hasStt__assemblyaiKey" : "hasStt__deepgramKey"];
-      const message = !voice?.enabled ? "Enable Voice input & chat to talk through your glasses."
-        : !keyReady ? `Add your ${provider === "assemblyai" ? "AssemblyAI" : "Deepgram"} key once in Global API keys.`
-        : cfg.voice__enabled === false || cfg.stt__enabled === false ? "Voice or transcription is switched off in Voice input & chat."
-        : "Voice is configured with your shared speech provider and API key. Select or mute the glasses microphone in the controls above or in Voice input & chat.";
       form.append(el("div", { class: "integration-dependencies" },
         el("h3", {}, "Shared voice settings"),
         el("p", {}, "Your glasses use Carvis’s Voice input & chat and Global API keys. No separate speech API key or model is needed here."),
-        el("p", { role: "status" }, message),
         el("div", { class: "action-row" },
           el("a", { href: "#integrations/voice", class: "button compact" }, "Voice & microphone"),
           el("a", { href: "#settings", class: "button quiet compact" }, "Global API keys"),
-          el("a", { href: "#integrations/speech", class: "button quiet compact" }, "Spoken replies")),
-        el("p", { class: "small muted" }, speech?.enabled && speech.config?.speech__autoReplies ? "Automatic spoken replies are enabled." : "Automatic spoken replies are off. Configure them in Spoken replies.")));
+          el("a", { href: "#integrations/speech", class: "button quiet compact" }, "Spoken replies"))));
     }
     const permissions = el(
       "details",

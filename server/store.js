@@ -7,6 +7,7 @@ import {
   chmodSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
+import { bindHomeIntegration } from "./home-setup.js";
 import {
   randomBytes,
   createCipheriv,
@@ -32,6 +33,9 @@ export function defaults() {
   };
 }
 export class Store {
+  get config() { return this._config; }
+  set config(value) { this._config = bindHomeIntegration(value); }
+
   constructor(directory) {
     this.directory = resolve(directory);
     mkdirSync(this.directory, { recursive: true, mode: 0o700 });

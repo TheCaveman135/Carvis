@@ -28,3 +28,27 @@ test('STT sends WAV with vocabulary and leaves provider transcript unchanged', a
  const result = await stt.transcribe(new Uint8Array(32000));
  assert.equal(result.text, 'Status unneeded bolt.'); assert.equal(stt.state().audio.durationMs, 1000);
 });
+
+test('cancelled transcription aborts provider work without reporting a provider outage', async () => {
+ let cancelPending;
+ const stt = new Transcriber(() => ({stt:{deepgramKey:'test'}}), {fetch:async(_url,{signal})=>{
+  cancelPending=signal;
+  return new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}));
+ }});
+ const pending=stt.transcribe(new Uint8Array(3200));
+ stt.cancel();
+ await assert.rejects(pending,{name:'AbortError'});
+ assert.equal(cancelPending.aborted,true);assert.equal(stt.state().error,'');
+ stt.fetch=async()=>Response.json({results:{channels:[{alternatives:[{transcript:'New request'}]}]}});
+ assert.equal((await stt.transcribe(new Uint8Array(3200))).text,'New request');
+});
+
+test('request cancellation is honored even if a provider response arrives after abort', async () => {
+ const controller=new AbortController();
+ const stt=new Transcriber(()=>({stt:{deepgramKey:'test'}}),{fetch:async()=>{
+  controller.abort();
+  return Response.json({results:{channels:[{alternatives:[{transcript:'Ignore this'}]}]}});
+ }});
+ await assert.rejects(()=>stt.transcribe(new Uint8Array(3200),{signal:controller.signal}),{name:'AbortError'});
+ assert.equal(stt.state().error,'');
+});

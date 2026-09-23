@@ -23,3 +23,21 @@ test('changing input preserves mute and reconnect stays on the chosen microphone
  await controls.update({muted:false});await controls.update({restart:true});assert.deepEqual(calls,['stop','stop','mic','mic']);
  assert.equal(controls.state().spokenRepliesEnabled,false);
 });
+
+test('device discovery cannot overwrite a concurrent mute change',async()=>{
+ const {controls,config}=fixture();let complete;
+ controls.listDevices=()=>new Promise(resolve=>{complete=resolve;});
+ const changing=controls.update({inputDevice:'local:mic'});
+ await controls.update({muted:true});
+ complete([{uid:'mic',input:true}]);
+ await changing;
+ assert.equal(config().voice.inputMuted,true);
+});
+
+test('microphone permission changes cancel pending transcription once',()=>{
+ const {controls,config}=fixture();let cancellations=0;
+ controls.transcriber.cancel=()=>{cancellations++;};
+ controls.sync();controls.sync();assert.equal(cancellations,1);
+ config().voice.inputMuted=true;controls.sync();assert.equal(cancellations,2);
+ config().integrations.voice=false;controls.sync();assert.equal(cancellations,3);
+});

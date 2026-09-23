@@ -143,14 +143,24 @@ export class AssistantRuntime {
       if (text) await this.exchange('reply', { text, source: 'integration' });
     }
   }
-  persistRuntimeConfig(cfg) {
+  persistRuntimeConfig(cfg, credentialPatch = {}) {
     // The child is trusted implementation code. Its model-facing tools cannot
     // configure plugins. Only its owner settings routes may change these values.
     cfg = structuredClone(cfg);
     const sharedKeys = globalKeys(this.store.config);
-    const inherited = {openaiKey:'openai',anthropicKey:'anthropic',stt__deepgramKey:'deepgram',stt__assemblyaiKey:'assemblyai',search__geminiKey:'gemini'};
+    const legacy = this.store.plugin('assistant-engine').get('legacyConfig', {});
+    const credentialFields = new Set(['openaiKey','anthropicKey','stt__deepgramKey','stt__assemblyaiKey','search__geminiKey']);
+    const credentialUpdates = new Map();
     for (const [id, section, key, service] of [['voice','stt','deepgramKey','deepgram'],['voice','stt','assemblyaiKey','assemblyai'],['web-search','search','geminiKey','gemini']]) {
-      if (!this.store.config.integrations[id]?.config?.[`${section}__${key}`] && cfg[section]?.[key] === sharedKeys[service]) cfg[section][key] = '';
+      const field = `${section}__${key}`;
+      const current = this.store.config.integrations[id]?.config || {};
+      const entered = credentialPatch[section]?.[key];
+      // Microphone/status saves can arrive from an older worker after key rotation.
+      // Only an explicit owner credential edit may create or replace an override.
+      if (typeof entered === 'string' && entered.trim()) credentialUpdates.set(field, entered.trim());
+      const inherited = sharedKeys[service] || Object.hasOwn(this.store.config.apiKeys || {}, service);
+      (cfg[section] ||= {})[key] = credentialUpdates.get(field) ?? (Object.hasOwn(current, field)
+        ? current[field] : inherited ? '' : legacy[section]?.[key] || '');
     }
     const projected = integrationConfigFromLegacy(cfg, runtimeEnvironment(this.store));
     for (const [id, entry] of Object.entries(projected)) {
@@ -159,7 +169,10 @@ export class AssistantRuntime {
       const fields = new Set((this.registry.modules.get(id)?.fields || []).map(f => f.key));
       for (const [key, value] of Object.entries(entry.config)) {
         if (id === 'even-realities' && ['publicBaseUrl', 'microphoneEnabled', 'speechBaseUrl', 'speechApiKey', 'speechModel', 'speechLanguage'].includes(key)) continue;
-        if (inherited[key] && !current.config[key] && value === sharedKeys[inherited[key]]) continue;
+        if (credentialFields.has(key)) {
+          if (fields.has(key) && credentialUpdates.has(key)) current.config[key] = credentialUpdates.get(key);
+          continue;
+        }
         if (fields.has(key)) current.config[key] = value;
       }
     }
@@ -296,7 +309,7 @@ export class AssistantRuntime {
           this.store.config.model = { ...this.store.config.model, provider: provider.kind === 'ollama' ? 'ollama' : 'openai', baseUrl: provider.kind === 'ollama' ? provider.baseUrl.replace(/\/v1\/?$/, '') + '/v1' : provider.baseUrl, model: role.model, apiKey: runtimeEnvironment(this.store)[provider.apiKeyEnv] || '' };
         }
       }
-      this.persistRuntimeConfig(next);
+      this.persistRuntimeConfig(next, patch);
       await this.refresh();
       const state = await this.call('state');
       return sendJson(res, { ok: true, config: state.config });

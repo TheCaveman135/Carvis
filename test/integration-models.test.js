@@ -19,3 +19,15 @@ test('Deepgram picker only returns batch transcription models',async()=>{
  const result=await integrationModels({integrationId:'voice',field:'stt__model'},store,registry,async(url,options)=>{assert.equal(url,'https://api.deepgram.com/v1/models');assert.equal(options.headers.Authorization,'Token fixture-dg');return Response.json({stt:[{canonical_name:'nova-3',batch:true},{canonical_name:'stream-only',batch:false}],tts:[{name:'not-transcription'}]});});
  assert.deepEqual(result.models,['nova-3']);
 });
+
+test('local-model picker uses the configured Ollama server URL', async () => {
+ const {store,registry}=fixture();
+ registry.modules.set('assistant-engine',{fields:[{key:'ollama__model'}]});
+ store.config.integrations['assistant-engine']={config:{ollama__url:'http://ollama.example:11434'}};
+ const result=await integrationModels({integrationId:'assistant-engine',field:'ollama__model'},store,registry,async(url,options)=>{
+   assert.equal(url,'http://ollama.example:11434/api/tags');
+   assert.deepEqual(options.headers,{});
+   return Response.json({models:[{name:'local-chat'}]});
+ });
+ assert.deepEqual(result.models,['local-chat']);
+});

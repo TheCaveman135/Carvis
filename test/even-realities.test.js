@@ -318,6 +318,7 @@ test("PCM conversion produces a bounded valid WAV header", () => {
 function sharedVoice(ctx) {
   const config = {profile:{},model:{},integrations:{
     'assistant-engine':{enabled:true,config:{}},
+    'even-realities':{enabled:true,config:{}},
     voice:{enabled:true,config:{voice__enabled:true,voice__inputMuted:false,voice__inputDevice:'even-glasses',stt__enabled:true,stt__engine:'deepgram',stt__model:'nova-3'}},
   },apiKeys:{deepgram:'global-test-key'}};
   ctx.registry.store={config,plugin:()=>({get:(_key,fallback)=>fallback})};

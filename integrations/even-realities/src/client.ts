@@ -128,12 +128,13 @@ export function normalizeConnection(baseUrl: string, token: string): {baseUrl: s
 export class CarvisClient {
   private baseUrl: string;
   private token: string;
+  configurationError = "";
   constructor(baseUrl: string, token: string) {
     this.baseUrl = '';
     this.token = '';
     if (baseUrl || token) {
       try { this.configure(baseUrl, token); }
-      catch { this.baseUrl = ''; this.token = ''; }
+      catch (error) { this.baseUrl = ''; this.token = ''; this.configurationError = error instanceof Error ? error.message : String(error); }
     }
   }
 
@@ -143,6 +144,7 @@ export class CarvisClient {
     const connection = normalizeConnection(baseUrl, token);
     this.baseUrl = connection.baseUrl;
     this.token = connection.token;
+    this.configurationError = "";
   }
 
   private headers(contentType: string): Record<string, string> {
@@ -153,13 +155,27 @@ export class CarvisClient {
     };
   }
 
+  private async request(url: string, options: RequestInit): Promise<Response> {
+    try { return await fetch(url, options); }
+    catch (error) {
+      if (options.signal?.aborted) throw error;
+      throw new Error('Could not reach Carvis. Open the same server address in Safari on this phone. Check your Wi-Fi or VPN connection and that this app package allows that server address.');
+    }
+  }
+
+  private async responseError(response: Response): Promise<Error> {
+    if (response.status === 401) return new Error('Pairing was rejected. Check that Even Realities and Advanced assistant are enabled, then enter the current device pairing token from Carvis.');
+    const body = await response.clone().json().catch(() => ({}));
+    return new Error(body.error || body.message || `Carvis returned HTTP ${response.status}.`);
+  }
+
   /**
    * Send one utterance. A slow reply here is normal — Carvis is transcribing,
    * triaging and possibly calling a cloud model before it answers — so this
    * gets the most generous ceiling of any call.
    */
   async sendAudio(pcm: Uint8Array, signal?: AbortSignal): Promise<IngestResult> {
-    const res = await fetch(`${this.baseUrl}/api/voice/audio`, {
+    const res = await this.request(`${this.baseUrl}/api/voice/audio`, {
       method: 'POST',
       headers: this.headers('application/octet-stream'),
       // Copy into a plain ArrayBuffer: a Uint8Array view over a larger buffer
@@ -167,19 +183,19 @@ export class CarvisClient {
       body: pcm.slice().buffer,
       signal: withTimeout(45_000, signal),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw await this.responseError(res);
     return res.json();
   }
 
   /** Typed text, for the simulator where there is no microphone. */
   async sendText(text: string): Promise<IngestResult> {
-    const res = await fetch(`${this.baseUrl}/api/voice/transcript`, {
+    const res = await this.request(`${this.baseUrl}/api/voice/transcript`, {
       method: 'POST',
       headers: this.headers('application/json'),
       body: JSON.stringify({ text }),
       signal: withTimeout(45_000),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw await this.responseError(res);
     return res.json();
   }
 
@@ -202,11 +218,11 @@ export class CarvisClient {
     confirmation: Confirmation | null;
     hud: HudState;
   }> {
-    const res = await fetch(`${this.baseUrl}/api/glasses/feed?since=${since}&hud=${hudRevision}${immediate ? "&wait=0" : ""}`, {
+    const res = await this.request(`${this.baseUrl}/api/glasses/feed?since=${since}&hud=${hudRevision}${immediate ? "&wait=0" : ""}`, {
       headers: this.headers('application/json'),
       signal: withTimeout(immediate ? 5000 : 25_000, signal),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw await this.responseError(res);
     return res.json();
   }
 
@@ -214,61 +230,60 @@ export class CarvisClient {
     id: string,
     accepted: boolean,
   ): Promise<IngestResult & { ok: boolean }> {
-    const res = await fetch(`${this.baseUrl}/api/glasses/confirmation`, {
+    const res = await this.request(`${this.baseUrl}/api/glasses/confirmation`, {
       method: 'POST',
       headers: this.headers('application/json'),
       body: JSON.stringify({ id, accepted }),
       signal: withTimeout(8_000),
     });
-    const body = await res.json();
-    if (!res.ok && res.status !== 409) throw new Error(body.message || `HTTP ${res.status}`);
-    return body;
+    if (!res.ok && res.status !== 409) throw await this.responseError(res);
+    return res.json();
   }
 
   /** Report only bridge-acknowledged content, never the HUD we merely received. */
   async reportDisplay(report: DisplayReport): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/api/glasses/display`, {
+    const res = await this.request(`${this.baseUrl}/api/glasses/display`, {
       method: 'POST',
       headers: this.headers('application/json'),
       body: JSON.stringify(report),
       signal: withTimeout(8_000),
     });
-    if (!res.ok) throw new Error(`display report HTTP ${res.status}`);
+    if (!res.ok) throw await this.responseError(res);
     await res.arrayBuffer();
   }
 
   async phonePoll(clientId: string, ready: boolean, signal?: AbortSignal): Promise<{command: {id:string;text:string} | null; outputMode:string; mediaPlayer:string}> {
-    const res = await fetch(`${this.baseUrl}/api/glasses/speech?client=${encodeURIComponent(clientId)}&ready=${ready ? 1 : 0}`, {
+    const res = await this.request(`${this.baseUrl}/api/glasses/speech?client=${encodeURIComponent(clientId)}&ready=${ready ? 1 : 0}`, {
       headers:this.headers('application/json'), signal:withTimeout(25_000, signal),
     });
-    if (!res.ok) throw new Error(`Phone audio HTTP ${res.status}`);
+    if (!res.ok) throw await this.responseError(res);
     return res.json();
   }
   async phoneAck(clientId: string, id: string, success: boolean): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/api/glasses/speech/ack`, {method:'POST',headers:this.headers('application/json'),body:JSON.stringify({clientId,id,success}),signal:withTimeout(5000)});
-    if (!res.ok) throw new Error(`Phone audio acknowledgement HTTP ${res.status}`);
+    const res = await this.request(`${this.baseUrl}/api/glasses/speech/ack`, {method:'POST',headers:this.headers('application/json'),body:JSON.stringify({clientId,id,success}),signal:withTimeout(5000)});
+    if (!res.ok) throw await this.responseError(res);
   }
   async setSpeechOutput(outputMode: string): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/api/glasses/speech/settings`, {method:'POST',headers:this.headers('application/json'),body:JSON.stringify({outputMode}),signal:withTimeout(5000)});
-    if (!res.ok) throw new Error(`Speaker setting HTTP ${res.status}`);
+    const res = await this.request(`${this.baseUrl}/api/glasses/speech/settings`, {method:'POST',headers:this.headers('application/json'),body:JSON.stringify({outputMode}),signal:withTimeout(5000)});
+    if (!res.ok) throw await this.responseError(res);
   }
 
   /** Camera bytes stay off the normal JSON poll so a frame never bloats it. */
   async interactWidget(action:{slot:number;widget_id:string;value?:number;index?:number}) {
-    const res=await fetch(`${this.baseUrl}/api/glasses/hud/interact`,{method:'POST',headers:this.headers('application/json'),body:JSON.stringify({...action,request_id:typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `gesture-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}),signal:withTimeout(15000)});
+    const res=await this.request(`${this.baseUrl}/api/glasses/hud/interact`,{method:'POST',headers:this.headers('application/json'),body:JSON.stringify({...action,request_id:typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `gesture-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}),signal:withTimeout(15000)});
     const result=await res.json();if(!res.ok)throw Error(result.error || 'Widget action failed');return result as {success:boolean;error?:string;dry_run?:boolean;confirmation?:Confirmation;hud?:HudState};
   }
   async clearHud():Promise<void>{
-    const res=await fetch(`${this.baseUrl}/api/hud/clear`,{method:'POST',headers:this.headers('application/json'),body:'{}',signal:withTimeout(5000)});
+    const res=await this.request(`${this.baseUrl}/api/hud/clear`,{method:'POST',headers:this.headers('application/json'),body:'{}',signal:withTimeout(5000)});
     if(!res.ok)throw Error('Could not clear HUD');
   }
 
   async fetchHudImage(slot: number, revision: number): Promise<Blob> {
-    const res = await fetch(
+    const res = await this.request(
       `${this.baseUrl}/api/glasses/hud/image?slot=${slot}&revision=${revision}`,
       { headers: this.headers('application/octet-stream'), cache: 'no-store', signal: withTimeout(15_000) },
     );
-    if (!res.ok) throw new Error(`camera HTTP ${res.status}`);
+    if (!res.ok) throw await this.responseError(res);
     return res.blob();
   }
 }

@@ -26,6 +26,7 @@ import { MacBridge } from './mac.js';
 import { Feed } from './feed.js';
 import { Voice } from './voice.js';
 import { Transcriber } from './stt.js';
+import { voiceInputIssue, transcribeVoiceInput } from './voice-input.js';
 import { open as openDb, costSummary, recentTrace, recordToolCall } from './db.js';
 import { bus, normalizeHaChange } from './events.js';
 import { WorldState } from './world.js';
@@ -389,10 +390,9 @@ async function serveStatic(req, res, urlPath) {
 }
 
 hostMicrophone = new HostMicrophone({onAudio:async (pcm,{isCurrent})=>{
-  const config=loadConfig();
-  if(!enabled(config,'voice')||!config.voice.enabled||!config.stt.enabled||config.voice.inputMuted)return;
-  const heard=await stt.transcribe(pcm);
-  if(heard.text&&isCurrent()&&!loadConfig().voice.inputMuted)await voice.ingest(heard.text,{source:'server-microphone',confidence:heard.confidence});
+  const inputDevice = loadConfig().voice.inputDevice;
+  const heard = await transcribeVoiceInput({ getConfig: loadConfig, transcriber: stt, pcm, inputDevice, isCurrent });
+  if (!heard.ignored && heard.text) await voice.ingest(heard.text, { source: 'server-microphone', confidence: heard.confidence });
 }});
 const voiceControls=new VoiceControls({microphone:hostMicrophone,getConfig:rawConfig,saveConfig,listDevices:listHostAudio,transcriber:stt,voice});
 voiceControls.sync();
@@ -592,15 +592,15 @@ const routes = {
    * exactly as `audioEvent.audioPcm` delivers it. Transcribed here and fed
    * straight into the same pipeline as typed text.
    *
-   * Mute lives entirely on the glasses: a muted G2 never calls this route at
-   * all, so there is nothing to check here.
+   * The companion gates capture locally; the server also honors the selected
+   * microphone, mute, and integration settings before and after transcription.
    */
   'POST /api/voice/audio': async (req, res) => {
     if (!isAuthorisedRequest(req, loadConfig())) return sendJson(res, 401, { ok: false, message: 'unauthorised' });
     const config = loadConfig();
     const audioSource=new URL(req.url,'http://localhost').searchParams.get('source')==='browser'?'browser':'even-glasses';
-    if(config.voice.inputMuted || (config.voice.inputDevice && config.voice.inputDevice!==audioSource))return sendJson(res,200,{ok:true,outcome:'ignored',reason:config.voice.inputMuted?'microphone muted':'another microphone is selected'});
-    if (!config.stt.enabled) return sendJson(res, 200, { ok: false, message: 'speech to text is switched off' });
+    const issue = voiceInputIssue(config, audioSource);
+    if (issue) return sendJson(res, 200, { ok: true, outcome: 'ignored', reason: issue });
 
     let pcm;
     try {
@@ -616,13 +616,13 @@ const routes = {
 
     let heard;
     try {
-      heard = await stt.transcribe(pcm);
+      heard = await transcribeVoiceInput({ getConfig: loadConfig, transcriber: stt, pcm, inputDevice: audioSource });
     } catch (err) {
+      if (err.name === 'AbortError') return sendJson(res, 200, { ok: true, outcome: 'ignored', reason: 'Microphone access changed during transcription.' });
       log('error', `Transcription failed: ${err.message}`);
       return sendJson(res, 200, { ok: false, message: err.message });
     }
-    const latest=loadConfig().voice;
-    if(latest.inputMuted || (latest.inputDevice && latest.inputDevice!==audioSource))return sendJson(res,200,{ok:true,outcome:'ignored',reason:'Microphone muted or changed during transcription'});
+    if (heard.ignored) return sendJson(res, 200, { ok: true, outcome: 'ignored', reason: heard.reason });
     const text = heard.text;
     if (!text) return sendJson(res, 200, { ok: true, outcome: 'ignored', reason: 'nothing said', text: '' });
 

@@ -83,3 +83,19 @@ test('full microphone segmentation sends speech with pre-roll and keeps silence 
   assert.equal(vad.finish(),null);
   vad.push(loud);vad.reset();assert.equal(vad.finish(),null);
 });
+
+test('companion explains rejected pairing and network failures without exposing credentials',async()=>{
+ const original=globalThis.fetch;
+ const client=new CarvisClient('https://carvis.example','synthetic-private-pairing-token');
+ try{
+  globalThis.fetch=async()=>Response.json({error:'Sign in to Carvis.'},{status:401});
+  await assert.rejects(()=>client.pollFeed(0,0,undefined,true),/Pairing was rejected/);
+  globalThis.fetch=async()=>Response.json({error:'This confirmation belongs to the owner chat.'},{status:403});
+  await assert.rejects(()=>client.resolveConfirmation('fixture',true),/belongs to the owner chat/);
+  globalThis.fetch=async()=>{throw new TypeError('Load failed');};
+  await assert.rejects(()=>client.pollFeed(0,0,undefined,true),error=>/Safari/.test(error.message)&&!/synthetic-private-pairing-token/.test(error.message));
+  const invalid=new CarvisClient('http://remote.example','token');
+  assert.equal(invalid.configured,false);assert.match(invalid.configurationError,/HTTPS/);
+  invalid.configure('https://carvis.example','token');assert.equal(invalid.configurationError,'');
+ }finally{globalThis.fetch=original;}
+});

@@ -132,6 +132,7 @@ async function main(): Promise<void> {
   }
   const displayClientKind = reporterKind();
   const client = new CarvisClient(baseUrl, token);
+  if (client.configurationError) state.lastError = client.configurationError;
   const detector = new UtteranceDetector();
   const displaySessionId = newSessionId();
   const displaySessionStartedAt = Date.now();
