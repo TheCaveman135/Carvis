@@ -53,8 +53,12 @@ export function createSettingsView({ state, api, refreshState }) {
     form.refreshKeys = () => {
       for (const control of controls) {
         const status = state.data.apiKeys?.[control.id];
-        control.key.placeholder = status?.saved ? "Saved · leave blank to keep" : "Optional API key";
-        control.description.textContent = status?.saved ? "Shared key saved." : "Add only the services you use.";
+        control.key.placeholder = status?.saved
+          ? "Saved · leave blank to keep"
+          : "Optional API key";
+        control.description.textContent = status?.saved
+          ? "Shared key saved."
+          : "Add only the services you use.";
         control.clearField.hidden = !status?.saved;
       }
     };
@@ -440,10 +444,15 @@ export function createSettingsView({ state, api, refreshState }) {
       modelForm.refreshModels();
       router.refreshModels();
     });
-    const modelForm = renderModelSettings({ state, api, refreshState, onSaved: () => {
-      globalKeys.refreshKeys();
-      router.refreshModels();
-    } });
+    const modelForm = renderModelSettings({
+      state,
+      api,
+      refreshState,
+      onSaved: () => {
+        globalKeys.refreshKeys();
+        router.refreshModels();
+      },
+    });
     const memoryCard = el(
       "section",
       { class: "settings-card full" },

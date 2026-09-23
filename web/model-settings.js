@@ -1,7 +1,11 @@
 import { el, input, field, errorText, formNotice } from "./ui.js";
 
 /** Read only public credential flags; never move keys between provider inputs. */
-export function modelKeyStatus(model, apiKeys, { provider, baseUrl, clear = false }) {
+export function modelKeyStatus(
+  model,
+  apiKeys,
+  { provider, baseUrl, clear = false },
+) {
   const normalize = (value) => {
     try {
       return new URL(value).toString().replace(/\/+$/, "");
@@ -9,15 +13,25 @@ export function modelKeyStatus(model, apiKeys, { provider, baseUrl, clear = fals
       return String(value || "").trim();
     }
   };
-  const sameConnection = provider === model.provider &&
+  const sameConnection =
+    provider === model.provider &&
     normalize(provider === "openai" ? "https://api.openai.com/v1" : baseUrl) ===
       normalize(model.baseUrl);
-  const shared = !clear && provider === "openai" && apiKeys?.openai?.saved === true;
-  return { shared, saved: Boolean(shared || (sameConnection && model.hasApiKey && !clear)) };
+  const shared =
+    !clear && provider === "openai" && apiKeys?.openai?.saved === true;
+  return {
+    shared,
+    saved: Boolean(shared || (sameConnection && model.hasApiKey && !clear)),
+  };
 }
 
 /** Provider connection, model discovery, and saved-key controls. */
-export function renderModelSettings({ state, api, refreshState, onSaved = () => {} }) {
+export function renderModelSettings({
+  state,
+  api,
+  refreshState,
+  onSaved = () => {},
+}) {
   const model = state.data.model || {};
   const provider = el(
     "select",
@@ -123,11 +137,12 @@ export function renderModelSettings({ state, api, refreshState, onSaved = () => 
     modelListStatus.textContent = "Waiting for connection details…";
   };
   let discoveryTimer;
-  const keyStatus = () => modelKeyStatus(model, state.data.apiKeys, {
-    provider: provider.value,
-    baseUrl: baseUrl.value,
-    clear: clearKey.checked,
-  });
+  const keyStatus = () =>
+    modelKeyStatus(model, state.data.apiKeys, {
+      provider: provider.value,
+      baseUrl: baseUrl.value,
+      clear: clearKey.checked,
+    });
   const scheduleModels = () => {
     clearTimeout(discoveryTimer);
     modelListVersion++;
@@ -144,10 +159,6 @@ export function renderModelSettings({ state, api, refreshState, onSaved = () => 
       if (modelSelect.isConnected) void loadModels();
     }, 700);
   };
-  provider.addEventListener("change", () => {
-    invalidateModels();
-    queueMicrotask(scheduleModels);
-  });
   baseUrl.addEventListener("input", () => {
     apiKey.value = "";
     invalidateModels();
@@ -174,19 +185,23 @@ export function renderModelSettings({ state, api, refreshState, onSaved = () => 
   );
   const syncKeyPlaceholder = () => {
     const status = keyStatus();
-    clearField.hidden = !(provider.value === "openai" ? state.data.apiKeys?.openai?.saved : model.hasApiKey && provider.value === model.provider);
-    clearLabel.textContent = provider.value === "openai"
-      ? "Remove shared OpenAI key"
-      : "Remove this connection’s saved key";
-    keyField.querySelector(".field-label").textContent = provider.value === "openai" ? "Global OpenAI API key" : "API key";
+    clearField.hidden = !(provider.value === "openai"
+      ? state.data.apiKeys?.openai?.saved
+      : model.hasApiKey && provider.value === model.provider);
+    clearLabel.textContent =
+      provider.value === "openai"
+        ? "Remove shared OpenAI key"
+        : "Remove this connection’s saved key";
+    keyField.querySelector(".field-label").textContent =
+      provider.value === "openai" ? "Global OpenAI API key" : "API key";
     apiKey.placeholder =
       status.shared
         ? "Using global OpenAI key"
         : status.saved
-        ? "Saved · leave blank to keep"
-        : model.hasApiKey
-          ? "Enter a key for this connection"
-          : "Paste your API key";
+          ? "Saved · leave blank to keep"
+          : model.hasApiKey
+            ? "Enter a key for this connection"
+            : "Paste your API key";
   };
   clearKey.addEventListener("change", () => {
     syncKeyPlaceholder();
@@ -208,6 +223,8 @@ export function renderModelSettings({ state, api, refreshState, onSaved = () => 
     apiKey.value = "";
     clearKey.checked = false;
     syncProvider();
+    invalidateModels();
+    scheduleModels();
   });
   syncProvider();
   const modelFeedback = el("div");
