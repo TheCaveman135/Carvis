@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 
 import { buildTools, macBoundaryError } from '../server/tools/index.js';
 import { validate } from '../server/tools/gateway.js';
+import { vetAction } from '../server/guards.js';
+import { applyHaCommand } from '../server/tools/home-assistant.js';
 
 test('Mac delegation cannot route around Home Assistant guards', () => {
   const ownerText = { triggerType: 'user_text' };
@@ -301,6 +303,34 @@ test('light tool forwards color and white settings alongside brightness',async()
  const actions=[];const tool=buildTools({getConfig:()=>({entities:{observed:['light.test'],controlled:['light.test']}}),worldState:{resolveTarget:()=>['light.test']},ha:{friendlyName:id=>id},agent:{executeVoiceActions:async list=>{actions.push(...list);return {executed:list,rejected:[]};}}}).find(t=>t.name==='ha.light.set');
  const args={target:'light.test',state:'on',rgb_color:[1,2,3],brightness:42};assert.equal(validate(args,tool.schema).ok,true);assert.equal((await tool.execute(args,{})).success,true);assert.deepEqual(actions[0].rgb_color,[1,2,3]);assert.equal(actions[0].brightness_pct,42);
  assert.equal((await tool.execute({...args,state:'off'},{})).success,false);
+});
+
+test('mixed-room white requests include color-only lights and report each limitation', async () => {
+  const states = new Map([
+    ['light.native', { state: 'on', attributes: { supported_color_modes: ['color_temp'], min_color_temp_kelvin: 2000, max_color_temp_kelvin: 6500 } }],
+    ['light.color', { state: 'on', attributes: { supported_color_modes: ['xy'] } }],
+    ['light.fixed', { state: 'on', attributes: { supported_color_modes: ['brightness'] } }],
+  ]);
+  const cfg = { entities: { controlled: [...states.keys()] }, agent: { allowedDomains: ['light'], cooldownSec: 0, respectManualOverrideSec: 0 } };
+  const ha = { states, friendlyName: id => id };
+  const agent = { executeVoiceActions: async actions => {
+    const executed = [], rejected = [];
+    for (const action of actions) {
+      const result = vetAction(action, { cfg, ha, now: Date.now(), origin: 'voice', triggerType: 'user_voice', cooldown: new Map(), manualTouch: new Map() });
+      if (result.ok) executed.push(result.action);
+      else rejected.push(result);
+    }
+    return { executed, rejected };
+  } };
+  const tool = buildTools({ ha, agent, getConfig: () => cfg, worldState: { resolveTarget: () => [...states.keys()] } }).find(t => t.name === 'ha.light.set');
+  const result = await tool.execute({ target: 'Room', state: 'on', color_temp_kelvin: 4000 }, {});
+  assert.deepEqual(result.changed.map(a => a.entity_id), ['light.native', 'light.color']);
+  assert.equal(result.changed[0].white_tone, undefined);
+  assert.equal(result.changed[1].white_tone.approximate, true);
+  assert.equal(result.blocked[0].entity_id, 'light.fixed');
+  assert.match(result.blocked[0].reason, /cannot change its white tone/);
+  const single = await applyHaCommand({ ha, agent }, { entity_id: 'light.color', service: 'turn_on', color_temp_kelvin: 4000 }, {});
+  assert.equal(single.white_tone.approximate, true);
 });
 
 test('TV power uses turn_on/turn_off with no playback or lighting arguments',async()=>{

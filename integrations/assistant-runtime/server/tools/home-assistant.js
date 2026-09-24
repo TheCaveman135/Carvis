@@ -444,6 +444,7 @@ async function applyHa({ ha, agent, worldState }, { target, state, brightness, r
       name: ha.friendlyName(a.entity_id),
       service: a.service,
       dry_run: Boolean(a.dryRun),
+      ...(a.white_tone ? { white_tone: a.white_tone } : {}),
     })),
     blocked: rejected.map((r) => ({ entity_id: r.entity_id, name: ha.friendlyName(r.entity_id), reason: r.reason })),
     ...(executed.length === 0
@@ -502,6 +503,7 @@ export async function applyHaCommand({ ha, agent }, args, ctx) {
     name: ha.friendlyName(changed.entity_id),
     service: changed.service,
     dry_run: Boolean(changed.dryRun),
+    ...(changed.white_tone ? { white_tone: changed.white_tone } : {}),
     ...(changed.controller ? {controller:changed.controller} : {}),
     ...(changed.dryRun ? { note: 'Dry run is on — nothing was sent to Home Assistant.' } : {}),
   };

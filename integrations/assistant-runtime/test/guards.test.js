@@ -251,6 +251,28 @@ test('already-on lights accept brightness and supported color adjustments',()=>{
  assert.equal(run({color_temp_kelvin:3000}).ok,true);assert.equal(run({color_temp_kelvin:1000}).ok,false);assert.equal(run({rgb_color:[999,0,0]}).ok,false);
  ctx.ha.states.get(id).attributes.supported_color_modes=['onoff'];assert.equal(run({rgb_color:[255,0,0]}).ok,false);assert.equal(run({brightness_pct:40}).ok,false);
 });
+
+test('white-tone emulation works for color-only lights without bypassing guards', () => {
+  const id = 'light.room', action = { entity_id: id, service: 'turn_on', color_temp_kelvin: 4000, brightness_pct: 35 };
+  const ctx = context(id, 'on', {}, { wakeWord: false });
+  for (const mode of ['hs', 'xy', 'rgb', 'rgbw', 'rgbww']) {
+    ctx.ha.states.get(id).attributes = { supported_color_modes: [mode] };
+    const result = vetAction(action, ctx);
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.action.service_data, { color_temp_kelvin: 4000, brightness_pct: 35 });
+    assert.equal(result.action.white_tone.approximate, true);
+  }
+  for (const color_temp_kelvin of [0, 999, 40001, 4000.5, '4000', NaN])
+    assert.equal(vetAction({ ...action, color_temp_kelvin }, ctx).ok, false);
+  assert.equal(vetAction({ ...action, rgb_color: [255,255,255] }, ctx).ok, false);
+  assert.equal(vetAction({ ...action, service: 'turn_off' }, ctx).ok, false);
+  ctx.cfg.entities.guards = { [id]: 'protected' };
+  assert.equal(vetAction(action, ctx).ok, false);
+  ctx.confirmed = true;
+  assert.equal(vetAction(action, ctx).ok, true);
+  ctx.cfg.entities.controlled = [];
+  assert.equal(vetAction(action, ctx).ok, false);
+});
 test('custom guard modes override automatic device classification',()=>{
  const id='light.desk',ctx=context(id,'off',{}, {wakeWord:false});ctx.cfg.entities.guards={[id]:'protected'};
  const action={entity_id:id,service:'turn_on',reason:'turn on desk light'};

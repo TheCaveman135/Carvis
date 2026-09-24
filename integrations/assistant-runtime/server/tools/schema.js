@@ -1,4 +1,5 @@
 import { SERVICES_BY_DOMAIN } from '../guards.js';
+import { WHITE_TEMPERATURE_DESCRIPTION } from '../../../../server/home/light-color.js';
 
 export const str = (description, maxLength = 200) => ({ type: 'string', description, maxLength });
 
@@ -10,7 +11,7 @@ export const COMMAND_PROPERTIES = {
     description: 'Typed HA service. Only services explicitly supported for the entity domain are accepted.',
   },
   rgb_color: { type: 'array', minItems: 3, maxItems: 3, items: {type:'integer',minimum:0,maximum:255}, description:'RGB color [red, green, blue]. Read supported_color_modes first.' },
-  color_temp_kelvin: {type:'integer',minimum:1000,maximum:40000,description:'White temperature within the light reported min/max Kelvin range.'},
+  color_temp_kelvin: {type:'integer',minimum:1000,maximum:40000,description:WHITE_TEMPERATURE_DESCRIPTION},
   brightness_pct: { type: 'integer', minimum: 1, maximum: 100 },
   percentage: { type: 'integer', minimum: 0, maximum: 100 },
   volume_percent: { type: 'integer', minimum: 0, maximum: 100 },

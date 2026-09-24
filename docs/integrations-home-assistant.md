@@ -38,6 +38,14 @@ Model tools:
 
 Examples include `{"entity_id":"light.example","service":"toggle"}`, or `{"entity_id":"light.example","service":"turn_on","brightness_pct":45}`. Media volume uses `volume_percent` from 0 to 100. The owner route `GET /api/integrations/home-assistant/entities` is intended for configuration UI and is never registered as a model tool.
 
+Warm, neutral, and cool white requests also work for color lights without a
+dedicated white-temperature setting. Carvis sends the requested Kelvin value to
+Home Assistant, which converts it to the light's supported color controls. These
+results are identified as approximate white tones. Lights with native white
+temperature still use their reported limits; fixed-color lights cannot change
+tone. The same behavior applies to core commands, Advanced Assistant, and saved
+protocol actions, with entity permissions, guards, and dry run preserved.
+
 Apple TV commands are delegated to the enabled Apple TV AI integration. Carvis does not fall back to direct remote services when that controller is missing or unavailable.
 
 This initial public integration provides on-demand observation and guarded control. It does not migrate the private installation's learned patterns, protocols, or personal entity lists.

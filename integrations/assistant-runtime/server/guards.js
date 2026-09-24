@@ -7,6 +7,8 @@
  * devices, but the invariants in this file are intentionally not configurable.
  */
 
+import { whiteTemperatureDetails } from '../../../server/home/light-color.js';
+
 export const APPLE_TV_BUTTONS = Object.freeze(['up', 'down', 'left', 'right', 'select', 'menu', 'top_menu']);
 
 const SERVICES_BY_DOMAIN = {
@@ -291,10 +293,10 @@ export function vetAction(action, ctx) {
   }
   if (action.color_temp_kelvin !== undefined) {
     const kelvin = action.color_temp_kelvin;
-    const min = state.attributes?.min_color_temp_kelvin;
-    const max = state.attributes?.max_color_temp_kelvin;
-    if (!modes.includes('color_temp')) return deny(entityId, 'This light does not support white temperature');
-    if (!Number.isInteger(kelvin) || !Number.isFinite(min) || !Number.isFinite(max) || kelvin < min || kelvin > max) return deny(entityId, `White temperature must be within the reported range ${min}–${max} K`);
+    try {
+      const details = whiteTemperatureDetails(kelvin, state.attributes);
+      if (details.approximate) out.white_tone = details;
+    } catch (error) { return deny(entityId, error.message); }
     out.service_data.color_temp_kelvin = kelvin;
   }
   const pct = Number(action.brightness_pct);

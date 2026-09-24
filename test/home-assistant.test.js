@@ -338,3 +338,45 @@ test('Room lookup failure leaves owner entity selection available with a warning
  assert.ok(result.entities.length);assert.match(result.areaWarning,/Room information/);
  assert.ok(result.entities.every(e=>e.area_id===''));
 });
+
+test('white tone reaches HA for every color mode, with approximation reported', async () => {
+  const f = fixture(), t = await f.tool('ha_command');
+  const args = { entity_id: 'light.room', service: 'turn_on', color_temp_kelvin: 4000, brightness_pct: 35 };
+  for (const mode of ['hs', 'xy', 'rgb', 'rgbw', 'rgbww']) {
+    // Color-only lights need no native white-temperature limits.
+    f.states.get('light.room').attributes = { supported_color_modes: [mode] };
+    const result = await t.execute(args);
+    assert.equal(result.accepted, true);
+    assert.equal(result.approximate, true);
+    assert.match(result.note, /approximate/);
+    const sent = JSON.parse(f.calls.filter(c => c.options.method === 'POST').at(-1).options.body);
+    assert.deepEqual(sent, { entity_id: 'light.room', color_temp_kelvin: 4000, brightness_pct: 35 });
+  }
+});
+
+test('white-tone fallback preserves native limits, validation, selection, guards, and dry run', async () => {
+  const f = fixture(), t = await f.tool('ha_command');
+  const args = { entity_id: 'light.room', service: 'turn_on', color_temp_kelvin: 4000 };
+  assert.equal((await t.execute(args)).approximate, undefined);
+  const before = f.calls.filter(c => c.options.method === 'POST').length;
+  await assert.rejects(() => t.execute({ ...args, color_temp_kelvin: 7000 }), /reported range/);
+  await assert.rejects(() => t.execute({ ...args, rgb_color: [255, 255, 255] }), /not both/);
+  for (const mode of ['brightness', 'onoff', 'white']) {
+    f.states.get('light.room').attributes = { supported_color_modes: [mode] };
+    await assert.rejects(() => t.execute(args), /cannot change/);
+  }
+  f.states.get('light.room').attributes = { supported_color_modes: ['xy'] };
+  for (const color_temp_kelvin of [0, 999, 40001, 4000.5, '4000', NaN])
+    await assert.rejects(() => t.execute({ ...args, color_temp_kelvin }), /whole number/);
+  await assert.rejects(() => t.execute({ ...args, service: 'turn_off' }), /do not apply/);
+  f.config.guards = { 'light.room': 'protected' };
+  assert.equal((await t.execute(args)).requiresConfirmation, true);
+  f.config.dryRun = true;
+  const preview = await t.execute(args, { source: 'chat' });
+  assert.equal(preview.dryRun, true);
+  assert.equal(preview.approximate, true);
+  f.config.controlled = [];
+  f.config.guards = {};
+  await assert.rejects(() => t.execute(args, { confirmed: true }), /not selected/);
+  assert.equal(f.calls.filter(c => c.options.method === 'POST').length, before);
+});

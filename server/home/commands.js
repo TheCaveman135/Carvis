@@ -2,6 +2,7 @@ import { validateConfig } from "./config.js";
 import { haRequest } from "./client.js";
 import { readState, visibleState } from "./state.js";
 import { liveOwner, needsLiveOwner, needsConfirmation } from "./permissions.js";
+import { WHITE_TEMPERATURE_DESCRIPTION, whiteTemperatureDetails } from "./light-color.js";
 
 const SERVICES = Object.freeze({
   light: ["turn_on", "turn_off", "toggle"],
@@ -51,7 +52,7 @@ const properties = {
     minItems: 3,
     maxItems: 3,
   },
-  color_temp_kelvin: { type: "integer" },
+  color_temp_kelvin: { type: "integer", minimum: 1000, maximum: 40000, description: WHITE_TEMPERATURE_DESCRIPTION },
   effect: { type: "string" },
   percentage: { ...NUMBER, minimum: 0, maximum: 100 },
   volume_percent: { ...NUMBER, minimum: 0, maximum: 100 },
@@ -113,6 +114,8 @@ export function commandData(args, state) {
     applied.add(key);
   };
   if (domain === "light" && service === "turn_on") {
+    if (args.rgb_color !== undefined && args.color_temp_kelvin !== undefined)
+      throw Error("Choose color or white temperature, not both.");
     takeNumber("brightness_pct", 0, 100);
     takeChoice("effect", attrs.effect_list);
     if (args.rgb_color !== undefined) {
@@ -129,13 +132,9 @@ export function commandData(args, state) {
       applied.add("rgb_color");
     }
     if (args.color_temp_kelvin !== undefined) {
-      if (!attrs.supported_color_modes?.includes("color_temp"))
-        throw Error("This light does not support white temperature.");
-      takeNumber(
-        "color_temp_kelvin",
-        attrs.min_color_temp_kelvin,
-        attrs.max_color_temp_kelvin,
-      );
+      whiteTemperatureDetails(args.color_temp_kelvin, attrs);
+      data.color_temp_kelvin = args.color_temp_kelvin;
+      applied.add("color_temp_kelvin");
     }
   }
   if (domain === "fan" && service === "set_percentage")
@@ -206,6 +205,8 @@ export async function authorization(ctx, args) {
 }
 export async function command(ctx, args, options = {}) {
   const { cfg, state, data, summary } = await authorization(ctx, args);
+  const whiteTone = args.color_temp_kelvin === undefined ? {} :
+    whiteTemperatureDetails(args.color_temp_kelvin, state.attributes);
   if (needsLiveOwner(cfg, args.entity_id, state) && !liveOwner(options))
     throw Error("This device requires a live owner request.");
   if (
@@ -236,6 +237,7 @@ export async function command(ctx, args, options = {}) {
     return {
       success: true,
       dryRun: true,
+      ...whiteTone,
       message: "Dry run: no device command was sent.",
       command: data,
       service: args.service,
@@ -250,6 +252,7 @@ export async function command(ctx, args, options = {}) {
       success: true,
       accepted: true,
       verified: false,
+      ...whiteTone,
       message:
         "Home Assistant accepted the command, but its resulting state could not be read. Check state before retrying.",
     };
@@ -265,6 +268,7 @@ export async function command(ctx, args, options = {}) {
   return {
     success: true,
     accepted: true,
+    ...whiteTone,
     verified: expected ? fresh.state === expected : false,
     message:
       expected && fresh.state !== expected
