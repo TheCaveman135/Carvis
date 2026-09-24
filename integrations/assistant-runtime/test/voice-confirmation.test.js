@@ -10,7 +10,7 @@ import {
   leadingWake,
 } from '../server/voice.js';
 
-function testVoice() {
+function testVoice({ ignoreAssistantSpeech = () => false } = {}) {
   const invocations = [];
   const feed = [];
   const config = {
@@ -57,6 +57,7 @@ function testVoice() {
     persistTranscript: (entry) => persisted.push(entry),
     deleteAllTranscripts: () => deletedTranscriptCalls.push(Date.now()),
     onConfirmationChange: (confirmation) => confirmationChanges.push(confirmation),
+    ignoreAssistantSpeech,
     // Never a real model binding either: Standard/Digital's no-wake-word
     // path always consults triage now (it's their only remaining safety net
     // for "was this actually addressed to Carvis" once the swipe requirement
@@ -70,6 +71,21 @@ function testVoice() {
   });
   return { voice, invocations, feed, config, carvis, persisted, gatewayCalls, deletedTranscriptCalls, confirmationChanges };
 }
+
+test('glasses and browser audio ignore Carvis playback before any model or tool call', async () => {
+  let playing = true;
+  const h = testVoice({ ignoreAssistantSpeech: () => playing });
+  for (const source of ['glasses', 'browser', 'server-microphone']) {
+    const result = await h.voice.ingest('Carvis, turn on the desk light', { source });
+    assert.equal(result.outcome, 'ignored', source);
+    assert.equal(result.reason, 'Carvis was speaking', source);
+  }
+  assert.equal(h.invocations.length, 0);
+  playing = false;
+  const next = await h.voice.ingest('Carvis, turn on the desk light', { source: 'glasses' });
+  assert.equal(next.outcome, 'acted');
+  assert.equal(h.invocations.length, 1);
+});
 
 test('Live conversation uses ordinary typed-request authorization and keeps protected confirmations',async()=>{
  const h=testVoice();

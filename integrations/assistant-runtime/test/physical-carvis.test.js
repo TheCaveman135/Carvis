@@ -322,8 +322,11 @@ test('microphone echo suppression follows local, phone, HA, and physical playbac
       onPlaybackChange:active=>events.push(active),
       sleep:async ms=>waits.push(ms),
     });
+    assert.equal(output.isPlaybackActive(),false);
     assert.equal((await output.speakReply({kind:'reply',text:'The lights are on.'})).success,true);
+    assert.equal(output.isPlaybackActive(),true);
     await output.outputTail;
+    assert.equal(output.isPlaybackActive(),false);
     assert.deepEqual(events,[true,false],mode);
     assert.equal(waits.at(-1),750,mode);
     assert.equal(waits.length,mode==='ha_only'||mode==='physical_only'?2:1,mode);

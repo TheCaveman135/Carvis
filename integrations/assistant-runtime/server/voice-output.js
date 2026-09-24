@@ -11,6 +11,7 @@ export class VoiceOutput {
     this.phoneSpeaker = phoneSpeaker;
     this.localSpeaker = localSpeaker;
     this.onPlaybackChange = onPlaybackChange;
+    this.playbackActive = false;
     this.sleep = sleep;
     this.recent = new Map();
     this.recentSpoken = [];
@@ -100,8 +101,11 @@ export class VoiceOutput {
   }
 
   #reportPlayback(active) {
+    this.playbackActive = active;
     try { this.onPlaybackChange?.(active); } catch { /* microphone status must not break speech */ }
   }
+
+  isPlaybackActive() { return this.playbackActive; }
 
   state() {
     return { queued: this.queued, lastDelivery: this.lastDelivery, echoesIgnored: this.echoesIgnored };

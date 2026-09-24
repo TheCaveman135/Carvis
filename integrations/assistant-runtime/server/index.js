@@ -202,6 +202,7 @@ voice = new Voice({
   feed,
   onTranscript: (transcript) => broadcast({ type: 'transcript', transcript }),
   onConfirmationChange: (confirmation) => broadcast({ type: 'confirmation', confirmation }),
+  ignoreAssistantSpeech: text => voiceOutput.isPlaybackActive() || voiceOutput.isRecentEcho(text),
 });
 
 /**

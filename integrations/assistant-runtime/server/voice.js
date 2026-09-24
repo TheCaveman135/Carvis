@@ -391,6 +391,7 @@ export class Voice {
     feed,
     onTranscript = () => {},
     onConfirmationChange = () => {},
+    ignoreAssistantSpeech = () => false,
     persistTranscript = saveTranscript,
     deleteAllTranscripts = dbDeleteAllTranscripts,
     complete = models.complete,
@@ -401,6 +402,7 @@ export class Voice {
     this.feed = feed;
     this.onTranscript = onTranscript;
     this.onConfirmationChange = onConfirmationChange;
+    this.ignoreAssistantSpeech = ignoreAssistantSpeech;
     this.persistTranscript = persistTranscript;
     this.deleteAllTranscripts = deleteAllTranscripts;
     // Injectable for the same reason persistTranscript is: a test must not
@@ -443,6 +445,8 @@ export class Voice {
     this.stats.heard++;
 
     if (!cfg.voice.enabled) return finish(this.#drop('voice is switched off'));
+    if (utterance && this.ignoreAssistantSpeech(utterance))
+      return finish(this.#drop('Carvis was speaking'));
     const recent = this.carvis.recentConversation?.({ turns: 8, maxAgeMs: 120000 }) || [];
     const context = followupContext(utterance, recent);
     if (!context.eligible && utterance.length < (cfg.voice.minChars ?? 3) && !/[\p{L}\p{N}]/u.test(utterance)) return finish(this.#drop('too short'));
