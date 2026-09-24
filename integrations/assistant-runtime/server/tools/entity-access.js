@@ -40,7 +40,15 @@ export function ruleUsesOnlyVisibleEntities(value, getConfig, allowed = visibleE
       if (id && !allowed.has(id)) visible = false;
     }
     for (const key of ['entity_id', 'media_player']) {
-      if (typeof node[key] === 'string' && node[key].includes('.') && !allowed.has(node[key])) visible = false;
+      // Rule actions may use a literal template so the runtime can materialize
+      // them through the same path as references. Treat that as the entity it
+      // names here too; otherwise a hidden entity could bypass the authoring
+      // boundary merely by being wrapped in { literal: ... }.
+      const raw = node[key];
+      const id = typeof raw === 'string'
+        ? raw
+        : (raw && typeof raw === 'object' && Object.keys(raw).length === 1 && typeof raw.literal === 'string' ? raw.literal : null);
+      if (id?.includes('.') && !allowed.has(id)) visible = false;
     }
     for (const child of Array.isArray(node) ? node : Object.values(node)) walk(child);
   };

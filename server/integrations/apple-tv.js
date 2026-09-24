@@ -226,6 +226,19 @@ async function authorize(
     protected: needsConfirmation(ha.config, id, state, service),
   };
 }
+async function authorizeTask(ctx) {
+  const cfg = validateConfig(ctx.config);
+  // A visual task may use either configured transport inside the controller.
+  // Check every configured target before authorizing that broader task.
+  const targets = [cfg.mediaPlayerEntity, cfg.remoteEntity].filter(Boolean);
+  const authorized = await Promise.all(
+    targets.map((entityId) => authorize(ctx, { entityId })),
+  );
+  return {
+    ...authorized[0],
+    protected: authorized.some((target) => target.protected),
+  };
+}
 function confirmation(a, summary, opts = {}) {
   if (!liveOwner(opts))
     throw Error("TV AI Controller actions require a live owner request.");
@@ -324,7 +337,7 @@ export default {
   ],
   validateConfig,
   async test(ctx) {
-    await authorize(ctx, { control: false });
+    await authorizeTask(ctx);
     await request(ctx, "/api/status");
     return {
       success: true,
@@ -339,14 +352,14 @@ export default {
           "Start a visual task in the TV AI Controller. This is asynchronous; use tv_status for progress. Never claim completion merely because a task started.",
         parameters: schema({ goal: string }, ["goal"]),
         async confirmation(args) {
-          const a = await authorize(ctx);
+          const a = await authorizeTask(ctx);
           return !a.ha.config.dryRun && a.protected
             ? `Start TV task: ${text(args.goal, "Goal", 4000)}`
             : null;
         },
         async execute(args, opts) {
           const goal = text(args.goal, "Goal", 4000),
-            a = await authorize(ctx),
+            a = await authorizeTask(ctx),
             blocked = confirmation(a, `Start TV task: ${goal}`, opts);
           if (blocked) return blocked;
           const result = await request(ctx, "/api/start", {
@@ -398,7 +411,7 @@ export default {
           "Add correction or guidance to an existing TV task for its next decision. Does not restart it. Use when the user says to search another streaming app, for example.",
         parameters: schema({ id: string, context: string }, ["id", "context"]),
         async confirmation(args) {
-          const a = await authorize(ctx);
+          const a = await authorizeTask(ctx);
           return !a.ha.config.dryRun && a.protected
             ? `Update TV task ${taskId(args.id)}: ${text(args.context, "Context", 4000)}`
             : null;
@@ -406,7 +419,7 @@ export default {
         async execute(args, opts) {
           const id = taskId(args.id),
             context = text(args.context, "Context", 4000),
-            a = await authorize(ctx),
+            a = await authorizeTask(ctx),
             blocked = confirmation(a, `Update TV task ${id}: ${context}`, opts);
           if (blocked) return blocked;
           const run = await request(ctx, "/api/context", {
@@ -427,14 +440,14 @@ export default {
         description: "Ask the AI TV controller to stop a specific task.",
         parameters: schema({ id: string }, ["id"]),
         async confirmation(args) {
-          const a = await authorize(ctx);
+          const a = await authorizeTask(ctx);
           return !a.ha.config.dryRun && a.protected
             ? `Stop TV task ${taskId(args.id)}`
             : null;
         },
         async execute(args, opts) {
           const id = taskId(args.id),
-            a = await authorize(ctx),
+            a = await authorizeTask(ctx),
             blocked = confirmation(a, `Stop TV task ${id}`, opts);
           if (blocked) return blocked;
           return {
@@ -465,8 +478,11 @@ export default {
           ["button"],
         ),
         async confirmation(args) {
+          const cfg = validateConfig(ctx.config);
+          if (!cfg.remoteEntity)
+            throw Error("Configure the TV remote entity to use navigation buttons.");
           const a = await authorize(ctx, {
-            entityId: validateConfig(ctx.config).mediaPlayerEntity || validateConfig(ctx.config).remoteEntity,
+            entityId: cfg.remoteEntity,
             service: "send_command",
           });
           return !a.ha.config.dryRun && a.protected
@@ -479,7 +495,7 @@ export default {
             throw Error(
               "Configure the TV remote entity to use navigation buttons.",
             );
-          const a = await authorize(ctx, { entityId: cfg.mediaPlayerEntity || cfg.remoteEntity, service: 'send_command' });
+          const a = await authorize(ctx, { entityId: cfg.remoteEntity, service: 'send_command' });
           const blocked = confirmation(a, `TV button: ${args.button}`, opts);
           if (blocked) return blocked;
           const run = await request(ctx, '/api/command', { request_id: randomUUID(), entity_id: cfg.remoteEntity, service: 'send_command', data: { command: args.button } });

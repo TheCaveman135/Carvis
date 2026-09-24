@@ -1,6 +1,7 @@
 import { el, button, errorText, formNotice, pageHeading } from "./ui.js";
 import { entityStateDisplay } from "./entity-state.js";
 import { mountVoiceControls } from "./voice-controls.js";
+import { mountVoiceConfirmation } from "./voice-confirmation.js";
 
 export function createHomeViews({
   state,
@@ -11,6 +12,7 @@ export function createHomeViews({
 }) {
   function renderVoiceConversations(main) {
     const voiceControls = mountVoiceControls({ el, button, api });
+    const voiceConfirmation = mountVoiceConfirmation({ api });
     const list = el("div", { class: "voice-history-list" }),
       messages = el("div", {
         class: "voice-history-messages",
@@ -31,6 +33,7 @@ export function createHomeViews({
           "Your spoken requests and Carvis’s replies. Updates automatically; a new conversation starts after 10 minutes of quiet.",
         ),
         voiceControls.root,
+        voiceConfirmation.root,
         el("div", { class: "voice-history" }, list, messages),
       ),
     );
@@ -125,6 +128,7 @@ export function createHomeViews({
       disposed = true;
       clearInterval(timer);
       voiceControls.dispose();
+      voiceConfirmation.dispose();
     };
   }
 
@@ -152,7 +156,10 @@ export function createHomeViews({
       ),
     );
     configureIntegration(home, content, { inline: true, onboarding });
-    if (onboarding)
+    if (onboarding) {
+      const clearSetupError = () => feedback.replaceChildren();
+      content.addEventListener("input", clearSetupError);
+      content.addEventListener("change", clearSetupError);
       content.after(
         button(
           "Finish home setup",
@@ -181,6 +188,7 @@ export function createHomeViews({
           "primary",
         ),
       );
+    }
   }
 
   function renderHome(main) {

@@ -45,6 +45,12 @@ const CONFIRMATION_BUSY_POLL_MS = 250;
 const CLARIFICATION_WINDOW_MS = 20_000;
 const TRANSCRIPT_LIMIT = 250;
 
+// Glasses and the installed machine's always-on microphone are both ambient
+// inputs. They must pass the same speech gates before reaching Carvis.
+function isContinuousVoiceSource(source) {
+  return source === 'glasses' || source === 'server-microphone';
+}
+
 export const TRIAGE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -430,6 +436,7 @@ export class Voice {
 
   async ingestVoice(text, { source = 'glasses', confidence = null } = {}) {
     const cfg = this.getConfig();
+    const continuousVoice = isContinuousVoiceSource(source);
     const utterance = String(text || '').trim().replace(/\s+/g, ' ');
     const transcript = utterance ? this.#beginTranscript(utterance, source, 'voice', confidence) : null;
     const finish = (result) => this.#completeTranscript(transcript, result);
@@ -458,20 +465,20 @@ export class Voice {
     // word is a new command, not an answer, so it deliberately supersedes the
     // old window instead.
     const answeringClarification =
-      source === 'glasses' && !wake.exact && !wake.fuzzy && this.#consumeClarificationWindow();
+      continuousVoice && !wake.exact && !wake.fuzzy && this.#consumeClarificationWindow();
 
     // Cheap pre-filter, before anything that costs a model call. A fuzzy wake
     // hit always passes — it is itself evidence of an addressing attempt.
     if (
       !answeringClarification &&
       cfg.voice.coherenceCheck !== false &&
-      source === 'glasses' &&
+      continuousVoice &&
       !coherent(utterance, { confidence, fuzzyWake: wake.fuzzy, contextual: context.eligible })
     ) {
       return finish(this.#drop('not coherent'));
     }
 
-    if (!answeringClarification && cfg.voice.requireWakeWord && source === 'glasses' && !wake.exact && !wake.fuzzy) {
+    if (!answeringClarification && cfg.voice.requireWakeWord && continuousVoice && !wake.exact && !wake.fuzzy) {
       return finish(this.#drop('no wake word'));
     }
     const spoken = wake.exact || wake.fuzzy ? wake.stripped : utterance;
@@ -480,7 +487,7 @@ export class Voice {
     // Text-matched, same constraint as everything else here: the tool has
     // not been chosen yet, only the words are available.
     const tier = context.eligible ? 'standard' : classifyRiskTier(spoken);
-    if (source === 'glasses' && typeof confidence === 'number' && confidence < TIER_MIN_CONFIDENCE[tier]) {
+    if (continuousVoice && typeof confidence === 'number' && confidence < TIER_MIN_CONFIDENCE[tier]) {
       return finish(this.#drop(`confidence too low for a ${tier} action`));
     }
 
@@ -496,7 +503,7 @@ export class Voice {
     // wake word, only Critical does. `request()` (typed input) runs the same
     // decision via #needsConfirmation — text can never carry a wake word, so
     // every Critical typed request stages a confirmation too.
-    if (source === 'glasses' && this.#needsConfirmation(spoken, { wakeExact: wake.exact })) {
+    if (continuousVoice && this.#needsConfirmation(spoken, { wakeExact: wake.exact })) {
       this.stats.triaged++;
       return finish(this.#stageConfirmation(
         spoken,
@@ -537,7 +544,7 @@ export class Voice {
       // domains (light, media). See confirmationDecision() for why it can
       // never reach a Critical domain.
       if (
-        source === 'glasses' &&
+        continuousVoice &&
         confirmationDecision({
           spoken,
           wakeExact: wake.exact,
@@ -660,7 +667,7 @@ export class Voice {
     const confirmation = {
       id: randomUUID(),
       prompt: confirmationPrompt(utterance),
-      detail: 'Swipe up accept · swipe down decline',
+      detail: source === 'glasses' ? 'Swipe up accept · swipe down decline' : 'Accept or decline in Carvis',
       createdAt: Date.now(),
       expiresAt: Date.now() + timeoutMs,
     };
@@ -927,9 +934,9 @@ export class Voice {
     else if (result.calls?.length) this.stats.filed++;
 
     // A reply that reads as a question means Carvis is waiting on the owner,
-    // not done. Give the very next glasses utterance a free pass through
+    // not done. Give the next always-on microphone utterance a free pass through
     // triage so the answer isn't judged addressed/unaddressed on its own.
-    if (addressed && source === 'glasses') {
+    if (addressed && isContinuousVoiceSource(source)) {
       this.awaitingClarificationUntil = result.reply?.trim().endsWith('?')
         ? Date.now() + CLARIFICATION_WINDOW_MS
         : 0;

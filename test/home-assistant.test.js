@@ -115,6 +115,24 @@ test("HA configuration is private by default and control implies observation", (
     /controlled entities/,
   );
 });
+
+test('Home Assistant connection errors explain setup problems without leaking server responses', async () => {
+  const f = fixture();
+  const read = await f.tool('ha_list_entities');
+  f.ctx.fetch = async () => { throw new TypeError('fetch failed: private fixture host'); };
+  await assert.rejects(() => read.execute({}), /Could not reach Home Assistant.*address and connection/);
+  f.ctx.fetch = async () => { const e = Error('private timeout detail'); e.name = 'TimeoutError'; throw e; };
+  await assert.rejects(() => read.execute({}), /did not respond within 15 seconds/);
+  f.ctx.fetch = async () => new Response('<html>login</html>', { status: 200 });
+  await assert.rejects(() => read.execute({}), /unexpected response.*points to Home Assistant/);
+  f.ctx.fetch = async () => new Response('private error body', { status: 401 });
+  await assert.rejects(() => read.execute({}), /Check the access token/);
+  const cancelled = new AbortController();
+  cancelled.abort(Error('request cancelled'));
+  f.ctx.signal = cancelled.signal;
+  f.ctx.fetch = async () => { throw cancelled.signal.reason; };
+  await assert.rejects(() => read.execute({}), /request cancelled/);
+});
 test("model entity list contains only selected devices, owner picker can enumerate", async () => {
   const f = fixture(),
     tool = await f.tool("ha_list_entities");
@@ -141,12 +159,14 @@ test("state and history sanitization mask unselected IDs and discard sensitive a
     friendly_name: "See light.hidden",
     access_token: "private-value",
   });
+  f.states.get("light.room").state = "Ready after update.hidden_firmware";
   const result = await (
     await f.tool("ha_get_state")
   ).execute({ entity_id: "light.room" });
   assert.equal(result.attributes.access_token, undefined);
   assert.equal(result.attributes.description, undefined);
   assert.equal(result.attributes.friendly_name, "See [unavailable]");
+  assert.equal(result.state, "Ready after [unavailable]");
   assert.deepEqual(
     integration.sanitize([{ content: "light.room versus lock.entry" }], f.ctx),
     [{ content: "light.room versus [unavailable]" }],
@@ -158,6 +178,8 @@ test("state and history sanitization mask unselected IDs and discard sensitive a
     }),
     "[unavailable] and [unavailable]",
   );
+  assert.equal(integration.sanitize('update.hidden_firmware and weather.hidden but light.room', f.ctx),
+    '[unavailable] and [unavailable] but light.room');
 });
 test("commands reject unselected entities, inappropriate parameters, and unsupported color without service requests", async () => {
   const f = fixture(),
@@ -212,6 +234,36 @@ test("ordinary light parameters are typed, preserve zero brightness, and verify 
   const off = await t.execute({ entity_id: "light.room", service: "turn_off" });
   assert.equal(off.verified, false);
   assert.match(off.message, /not yet confirmed/);
+});
+
+test('light power checks a delayed HA state once more without sending the command twice', async () => {
+  const f = fixture(), original = f.ctx.fetch;
+  let readsAfterAction = 0;
+  f.ctx.fetch = async (url, options) => {
+    if (url.includes('/api/states/light.room') && f.calls.some(c => c.options.method === 'POST')) {
+      readsAfterAction++;
+      if (readsAfterAction === 2) f.states.get('light.room').state = 'off';
+    }
+    return original(url, options);
+  };
+  const result = await (await f.tool('ha_command')).execute({ entity_id: 'light.room', service: 'turn_off' });
+  assert.equal(result.accepted, true);
+  assert.equal(result.verified, true);
+  assert.equal(readsAfterAction, 2);
+  assert.equal(f.calls.filter(c => c.options.method === 'POST').length, 1);
+});
+
+test('zero brightness is verified as off because HA treats it as turning the light off', async () => {
+  const f = fixture(), original = f.ctx.fetch;
+  f.ctx.fetch = async (url, options) => {
+    const result = await original(url, options);
+    if (url.includes('/api/services/light/turn_on')) f.states.get('light.room').state = 'off';
+    return result;
+  };
+  const result = await (await f.tool('ha_command')).execute({ entity_id: 'light.room', service: 'turn_on', brightness_pct: 0 });
+  assert.equal(result.accepted, true);
+  assert.equal(result.verified, true);
+  assert.equal(result.state.state, 'off');
 });
 test("default guarded devices need confirmation, reject background; locking is a protective exception", async () => {
   const f = fixture({ controlled: ["lock.entry"] }),

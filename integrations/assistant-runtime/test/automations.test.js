@@ -33,7 +33,7 @@ function stateEquals(entityId, value) {
   };
 }
 
-function makeHarness({ now = 1_800_000_000_000, onWake, tools, gatewayCall, isHaReady, isAtlasReady, atlas, memory } = {}) {
+function makeHarness({ now = 1_800_000_000_000, onWake, tools, gatewayCall, isHaReady, isAtlasReady, atlas, memory, config } = {}) {
   let clock = now;
   const store = makeStore(() => clock);
   const bus = makeBus(store, () => clock);
@@ -65,7 +65,7 @@ function makeHarness({ now = 1_800_000_000_000, onWake, tools, gatewayCall, isHa
     getVoiceState: () => ({ enabled: true }),
     // The harness is a fully owner-selected test home. Individual visibility
     // boundary tests provide a narrower inventory explicitly.
-    getConfig: () => ({ entities: { observed: [...ha.states.keys()], controlled: [...ha.states.keys()] } }),
+    getConfig: () => config || ({ entities: { observed: [...ha.states.keys()], controlled: [...ha.states.keys()] } }),
     isHaReady: isHaReady || (() => true),
     isAtlasReady: isAtlasReady || (() => true),
     onWake: async (input) => {
@@ -131,6 +131,23 @@ test('Carvis must copy verified device states and event names before saving prot
   assert.equal(h.gateway.calls.length, 1);
   assert.throws(() => engine.save(rule({ id: 'bad_event', when: { op: 'changed_to', left: ref('event.type'), right: literal('timer.completed') } }), { createdBy: 'carvis' }), /timer.finished/);
   engine.save(rule({ id: 'good_event', when: { op: 'changed_to', left: ref('event.type'), right: literal('timer.finished') } }), { createdBy: 'carvis' });
+});
+
+test('Carvis protocol actions cannot target a hidden entity, including literal templates', () => {
+  const h = makeHarness({ config: { entities: { observed: ['sensor.visible'], controlled: ['switch.visible'] } } });
+  const engine = h.engine();
+  const base = {
+    when: changedTo('sensor.visible', 'ready'),
+    then: [{ type: 'tool.call', tool: 'ha.entity.command', arguments: { entity_id: 'switch.hidden', service: 'turn_on' } }],
+  };
+  assert.throws(() => engine.save(rule({ id: 'hidden_action', ...base }), { createdBy: 'carvis' }), /only reference entities available to Carvis/);
+  assert.throws(() => engine.save(rule({
+    id: 'hidden_literal_action',
+    ...base,
+    then: [{ type: 'tool.call', tool: 'ha.entity.command', arguments: { entity_id: literal('switch.hidden'), service: 'turn_on' } }],
+  }), { createdBy: 'carvis' }), /only reference entities available to Carvis/);
+  assert.equal(engine.get('hidden_action'), null);
+  assert.equal(engine.get('hidden_literal_action'), null);
 });
 
 test('state discovery includes historical values and permits numeric sensor thresholds', async (t) => {

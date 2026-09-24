@@ -78,6 +78,11 @@ export class Vision {
     const requested=[...ids.map(id=>({id,kind:'camera',entity:byId.get(id)})),...[...new Set(image_ids)].map(id=>({id,kind:'image'}))];
     if(!requested.length)return {success:false,error:'No cameras are selected for Carvis. Select cameras in Entities or attach an image.'};
     const skipped=requested.slice(MAX_SOURCES).map(s=>s.id),sources=requested.slice(0,MAX_SOURCES);
+    const assertSourceAvailable=source=>{
+      if(source.kind==='camera'){
+        if(!this.cameras().some(c=>c.entity_id===source.id))throw Error('Camera is no longer selected.');
+      }else this.image(source.id);
+    };
     this.busy=true;const started=this.now();
     try{
       const observations=[];
@@ -91,7 +96,7 @@ export class Vision {
             let bytes;
             if(source.kind==='camera'){
               // Recheck selection immediately before every camera read.
-              if(!this.cameras().some(c=>c.entity_id===source.id))throw Error('Camera is no longer selected.');
+              assertSourceAvailable(source);
               if(['unavailable','unknown'].includes(this.ha.states.get(source.id)?.state))throw Error('Camera is unavailable.');
               let frame;
               try{frame=await this.ha.cameraImage(source.id,{maxBytes:IMAGE_LIMIT});}
@@ -101,11 +106,15 @@ export class Vision {
             }else{
               const image=this.image(source.id);bytes=image.bytes;metadata.received_at=image.received_at;
             }
+            // A snapshot or image can be revoked while decoding or retrieving it.
+            assertSourceAvailable(source);
             const memory=this.getMemory();
             const facts=memory?.search(`${question} ${objective} ${metadata.room || ''} ${source.kind==='camera'?metadata.name:''}`,4,['fact']) || [];
             const brief={question,objective,context,source:{type:source.kind,name:metadata.name,room:metadata.room},
               remembered_facts:facts.map(f=>f.text.slice(0,500))};
             const result=await this.analyze(bytes,JSON.stringify(visibleModelInput(brief,this.getConfig(),this.ha)),ctx);
+            // Do not return an observation if access was revoked during the model call.
+            assertSourceAvailable(source);
             if(facts.length)memory.markUsed?.(facts.map(f=>f.id));
             return {...metadata,status:'analyzed',...result};
           }catch(error){return {...metadata,status:'unavailable',error:error.message};}

@@ -151,7 +151,7 @@ export default {
     const scrub = (v) =>
       typeof v === "string"
         ? v.replace(
-            /\b(?:light|switch|fan|input_boolean|media_player|remote|scene|script|automation|button|input_button|number|input_number|select|input_select|lock|cover|alarm_control_panel|siren|climate|humidifier|water_heater|valve|vacuum|sensor|binary_sensor|camera)\.[a-z0-9_]+\b/g,
+            /\b(?:light|switch|fan|input_boolean|media_player|remote|scene|script|automation|button|input_button|number|input_number|select|input_select|lock|cover|alarm_control_panel|siren|climate|humidifier|water_heater|valve|vacuum|sensor|binary_sensor|camera|update|person|device_tracker|weather|calendar|sun|event|text|input_text|datetime|input_datetime|date|time|todo|image|image_processing|lawn_mower)\.[a-z0-9_]+\b/g,
             (id) => (selected.has(id) ? id : "[unavailable]"),
           )
         : Array.isArray(v)

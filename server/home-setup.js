@@ -20,13 +20,18 @@ export function initializeHome(store) {
     const configured = Boolean(
       legacy?.enabled && legacy.config?.baseUrl && legacy.config?.token,
     );
+    const entitiesSelected = Boolean(
+      legacy?.config?.observed?.length || legacy?.config?.controlled?.length,
+    );
     store.config.homeAssistant = {
       enabled: configured,
       config: {
         ...legacy?.config,
         homeName: legacy?.config?.homeName || (configured ? "My Home" : ""),
       },
-      entitiesReviewed: configured,
+      // A legacy connection without selected entities still needs the owner
+      // to choose what Carvis may see before setup is complete.
+      entitiesReviewed: configured && entitiesSelected,
     };
   }
   delete store.config.integrations["home-assistant"];

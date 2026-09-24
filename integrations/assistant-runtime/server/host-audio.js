@@ -7,6 +7,7 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 const exec=promisify(execFile);let building;
 const playbackProcesses=new Set();
+const MAX_QUEUED_UTTERANCES=4;
 export function stopLocalPlayback(){for(const child of playbackProcesses)child.kill('SIGTERM');playbackProcesses.clear();}
 export async function audioHelper(){
  if(process.platform!=='darwin')throw Error('Local audio devices currently require macOS. Glasses and HA speakers still work.');
@@ -39,8 +40,10 @@ export class HostMicrophone {
  constructor({onAudio,list=listHostAudio,helper=audioHelper,spawnImpl=spawn,now=Date.now}){
   Object.assign(this,{onAudio,list,helper,spawn:spawnImpl,now});
   this.process=null;this.error='';this.generation=0;this.busy=false;this.speakingOutput=false;
+  this.pendingSentences=[];this.missedUtterances=0;
   this.detector=new PcmSentences();this.active='';this.desired='';this.lastAudioAt=0;this.level=0;this.peakRms=0;this.bytes=0;this.retries=0;
  }
+ setSpeakingOutput(active){this.speakingOutput=Boolean(active);if(active)this.detector.reset();}
  async start(uid,{retry=false}={}){
   this.stop();const generation=this.generation;this.desired=uid;this.error='';this.startedAt=this.now();
   if(!retry)this.retries=0;
@@ -58,20 +61,31 @@ export class HostMicrophone {
      const frame=remainder.subarray(0,640);remainder=remainder.subarray(640);
      let sum=0;for(let i=0;i<frame.length;i+=2)sum+=frame.readInt16LE(i)**2;
      const rms=Math.sqrt(sum/320);this.peakRms=Math.max(this.peakRms,rms);this.level=Math.min(100,Math.round(rms/32768*500));
-     if(this.busy||this.speakingOutput){this.detector.reset();continue;}
+     if(this.speakingOutput){this.detector.reset();continue;}
      const audio=this.detector.push(frame);
      if(audio){
-      this.busy=true;
-      Promise.resolve().then(()=>generation===this.generation?this.onAudio(audio,{isCurrent:()=>generation===this.generation}):null)
-       .then(()=>{if(generation===this.generation)this.error='';})
-       .catch(e=>{if(generation===this.generation)this.error=e.message;})
-       .finally(()=>{if(generation===this.generation)this.busy=false;});
+      if(this.busy){
+       if(this.pendingSentences.length<MAX_QUEUED_UTTERANCES)this.pendingSentences.push(audio);
+       else{this.missedUtterances++;this.error='Voice is busy; a later request was missed. Please repeat it.';}
+      }else this.processSentence(audio,generation);
      }
     }
    });
    child.on('error',e=>{if(generation===this.generation)this.retry(e.message);});
    child.on('exit',()=>{if(generation===this.generation)this.retry(stderr.trim()||'Microphone stopped. Reconnecting to the selected device.');});
-  }catch(error){if(generation===this.generation)this.retry(error.message);}
+ }catch(error){if(generation===this.generation)this.retry(error.message);}
+ }
+ processSentence(audio,generation){
+  this.busy=true;
+  Promise.resolve().then(()=>generation===this.generation?this.onAudio(audio,{isCurrent:()=>generation===this.generation}):null)
+   .then(()=>{if(generation===this.generation&&!this.missedUtterances)this.error='';})
+   .catch(e=>{if(generation===this.generation)this.error=e.message;})
+   .finally(()=>{
+    if(generation!==this.generation)return;
+    const next=this.pendingSentences.shift();
+    if(next)this.processSentence(next,generation);
+    else this.busy=false;
+   });
  }
  checkHealth(){
   if(this.process&&this.now()-(this.lastAudioAt||this.startedAt)>(this.lastAudioAt?10000:30000))this.retry('The selected microphone is not sending audio. Check its connection or choose another microphone.');
@@ -85,8 +99,9 @@ export class HostMicrophone {
  stop(){
   this.generation++;clearInterval(this.watchdog);clearTimeout(this.retryTimer);this.retryAt=0;this.desired='';
   this.process?.kill('SIGTERM');this.process=null;this.active='';this.busy=false;this.lastAudioAt=0;this.bytes=0;this.level=0;this.peakRms=0;this.error='';this.detector.reset();
+  this.pendingSentences=[];this.missedUtterances=0;
  }
- state(){return {listening:Boolean(this.process&&this.lastAudioAt&&this.now()-this.lastAudioAt<3000),capturing:Boolean(this.process),device:this.active||this.desired,error:this.error,level:this.now()-this.lastAudioAt<1000?this.level:0,lastAudioAt:this.lastAudioAt,bytesReceived:this.bytes,peakRms:Math.round(this.peakRms),hearingSpeech:this.detector.speaking,processing:this.busy,speaking:this.speakingOutput,reconnecting:Boolean(this.retryAt),retryAt:this.retryAt};}
+ state(){return {listening:Boolean(this.process&&this.lastAudioAt&&this.now()-this.lastAudioAt<3000),capturing:Boolean(this.process),device:this.active||this.desired,error:this.error,level:this.now()-this.lastAudioAt<1000?this.level:0,lastAudioAt:this.lastAudioAt,bytesReceived:this.bytes,peakRms:Math.round(this.peakRms),hearingSpeech:this.detector.speaking,processing:this.busy,queuedUtterances:this.pendingSentences.length,missedUtterances:this.missedUtterances,speaking:this.speakingOutput,reconnecting:Boolean(this.retryAt),retryAt:this.retryAt};}
 }
 export async function speakLocal(text,uid,{onStart=()=>{},onEnd=()=>{}}={}){
  const device=(await listHostAudio()).find(d=>d.uid===uid&&d.output);if(!device)return {success:false,error:'Selected local speaker is unavailable'};

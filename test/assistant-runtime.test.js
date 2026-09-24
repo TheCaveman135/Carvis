@@ -184,6 +184,14 @@ test('paired device credentials reach only companion APIs and cannot read owner 
   const app=await application(t,{engine:true,devices:true});
   const token='fixture-private-glasses-token';
   assert.equal((await app.request('/api/glasses/feed?wait=0',{token})).status,200);
+  const ownerConfirmation=await app.request('/integrations/assistant-engine/api/glasses/confirmation',{owner:true});
+  assert.equal(ownerConfirmation.status,200);
+  assert.equal((await ownerConfirmation.json()).confirmation,null);
+  assert.equal((await app.request('/integrations/assistant-engine/api/glasses/confirmation',{token})).status,401);
+  const direct=await fetch(`http://127.0.0.1:${app.runtime.port}/api/glasses/confirmation`,{
+    headers:{authorization:`Bearer ${token}`},signal:AbortSignal.timeout(5000),
+  });
+  assert.equal(direct.status,401);
   for (const path of ['/api/state','/api/integrations/home-assistant/entities','/integrations/assistant-engine/api/state','/integrations/assistant-engine/api/config']) {
     assert.equal((await app.request(path,{token})).status,401,path);
   }

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {PcmSentences,HostMicrophone} from '../integrations/assistant-runtime/server/host-audio.js';
 function frame(level=0){const b=Buffer.alloc(640);for(let i=0;i<b.length;i+=2)b.writeInt16LE(level,i);return b;}
+function sentence(){return Buffer.concat([...Array(30)].map(()=>frame(1500)).concat([...Array(40)].map(()=>frame())));}
 test('continuous capture ignores silence and ends a sentence after a pause',()=>{
  const vad=new PcmSentences();for(let i=0;i<1000;i++)assert.equal(vad.push(frame()),null);
  for(let i=0;i<30;i++)assert.equal(vad.push(frame(1200)),null);
@@ -58,4 +59,46 @@ test('quiet speech reaches transcription while low background noise is ignored',
  for(let i=0;i<30;i++)assert.equal(vad.push(frame(220)),null);
  let result;for(let i=0;i<40;i++)result=vad.push(frame(60)) || result;
  assert(result?.length>16000);
+});
+
+test('Mac microphone queues speech heard while an earlier request is still running',async t=>{
+ const {mic,children}=microphoneFixture(t);let release;const heard=[];
+ mic.onAudio=audio=>{heard.push(audio.length);return heard.length===1?new Promise(resolve=>{release=resolve;}):undefined;};
+ await mic.start('test');children[0].stdout.emit('data',sentence());
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(heard.length,1);
+ children[0].stdout.emit('data',sentence());assert.equal(mic.state().queuedUtterances,1);
+ release();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(heard.length,2);assert.equal(mic.state().queuedUtterances,0);
+});
+
+test('muting discards queued Mac microphone speech from the old capture',async t=>{
+ const {mic,children}=microphoneFixture(t);let release;let heard=0;
+ mic.onAudio=()=>{heard++;return new Promise(resolve=>{release=resolve;});};
+ await mic.start('test');children[0].stdout.emit('data',sentence());
+ await new Promise(resolve=>setImmediate(resolve));children[0].stdout.emit('data',sentence());
+ assert.equal(mic.state().queuedUtterances,1);
+ mic.stop();release();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(heard,1);assert.equal(mic.state().queuedUtterances,0);
+});
+
+test('Mac microphone ignores its own HA speech through playback and the audio tail',async t=>{
+ const {mic,children}=microphoneFixture(t);let heard=0;mic.onAudio=()=>{heard++;};
+ await mic.start('test');const waits=[];
+ const output=new VoiceOutput({
+  getConfig:()=>({speech:{autoReplies:true,outputMode:'ha_only',mediaPlayer:'media_player.fixture',ttsEntity:'tts.fixture'},entities:{controlled:['media_player.fixture']}}),
+  ha:{callService:async()=>{}},
+  sleep:ms=>new Promise(resolve=>waits.push({ms,resolve})),
+  onPlaybackChange:active=>mic.setSpeakingOutput(active),
+ });
+ assert.equal((await output.speakReply({kind:'reply',text:'Checking the lights now.'})).success,true);
+ assert.equal(mic.state().speaking,true);
+ children[0].stdout.emit('data',sentence());assert.equal(heard,0);
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(waits.length,1);
+ waits[0].resolve();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(waits[1].ms,750);assert.equal(mic.state().speaking,true);
+ children[0].stdout.emit('data',sentence());assert.equal(heard,0);
+ waits[1].resolve();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(mic.state().speaking,false);
+ children[0].stdout.emit('data',sentence());await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(heard,1);
 });

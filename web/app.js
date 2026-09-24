@@ -36,6 +36,8 @@ const state = {
 const api = createApi({
   onUnauthorized() {
     if (!state.data) return;
+    state.integrationCleanup?.();
+    state.integrationCleanup = null;
     state.data = null;
     renderAuth(false);
   },
@@ -478,6 +480,8 @@ function renderShell() {
           act(async () => {
             if (state.controller) state.controller.abort();
             await api("/api/logout", { method: "POST" });
+            state.integrationCleanup?.();
+            state.integrationCleanup = null;
             state.data = null;
             renderAuth(false);
           }),

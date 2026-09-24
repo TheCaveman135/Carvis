@@ -1,4 +1,5 @@
 import { el, icon, button, errorText, input, formNotice } from "./ui.js";
+import { entityStateDisplay } from "./entity-state.js";
 
 export function createEntitySelector({ api }) {
   function makeEntitySelector(
@@ -223,6 +224,7 @@ export function createEntitySelector({ api }) {
       for (const e of matches) {
         const id = e.entity_id,
           name = e.name || id;
+        const stateDisplay = entityStateDisplay(e);
         const mark = input(`mark-${id}`, "", "checkbox", {
           checked: selected.has(id),
           "aria-label": `Select ${name} for bulk edits`,
@@ -301,9 +303,14 @@ export function createEntitySelector({ api }) {
               {},
               el(
                 "span",
-                { class: `entity-state ${e.state === "on" ? "is-on" : ""}` },
+                {
+                  class: `entity-state ${e.state === "on" ? "is-on" : ""}`,
+                  title: stateDisplay.title || "",
+                },
                 e.state == null
                   ? "Unavailable"
+                  : stateDisplay.title
+                    ? stateDisplay.text
                   : `${label(e.state)}${e.unit ? " " + e.unit : ""}`,
               ),
             ),

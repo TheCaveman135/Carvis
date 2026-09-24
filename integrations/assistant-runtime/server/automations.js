@@ -18,7 +18,7 @@ import {
 } from './automations/rule-helpers.js';
 import { publicRule, publicTimer, publicRun } from './automations/public-model.js';
 import { DEFAULT_STORE } from './automations/store.js';
-import { isVisibleEntity, visibleEntityIds } from './tools/entity-access.js';
+import { isVisibleEntity, ruleUsesOnlyVisibleEntities, visibleEntityIds } from './tools/entity-access.js';
 import { log } from './log.js';
 import { requiresOwnerConfirmation } from './guards.js';
 import { nextAlarmOccurrence } from './automation-utils.js';
@@ -370,6 +370,12 @@ export class AutomationEngine {
           errors.push({ path: '$', code: 'entity_visibility', message: 'a protocol may only reference entities available to Carvis' });
           break;
         }
+      }
+      // Entity arguments are not references, and are therefore absent from
+      // refsInRule(). Check the complete definition as well so an action cannot
+      // target an entity the owner did not expose to Carvis.
+      if (!ruleUsesOnlyVisibleEntities(rule, () => this.getConfig?.(), visible)) {
+        errors.push({ path: '$', code: 'entity_visibility', message: 'a protocol may only reference entities available to Carvis' });
       }
     }
     for (const stage of ['when', 'if', 'while']) {

@@ -309,3 +309,56 @@ test('ordinary speaker failures never reset unrelated media playback',async()=>{
   assert.equal((await output.speak('Failed playback.')).success,false);
   assert.deepEqual(calls,['tts.speak']);
 });
+
+test('microphone echo suppression follows local, phone, HA, and physical playback lanes',async()=>{
+  for (const mode of ['local_only','phone_only','ha_only','physical_only']) {
+    const events=[];const waits=[];
+    const output=new VoiceOutput({
+      getConfig:()=>config({speech:{outputMode:mode}}),
+      localSpeaker:async()=>({success:true,target:'local_speaker',streamFinished:true}),
+      phoneSpeaker:{speak:async()=>({success:true,target:'iphone',streamFinished:true})},
+      ha:{callService:async()=>{}},
+      physicalCarvis:{enqueueSpeak:()=>({command:{id:'fixture'}})},
+      onPlaybackChange:active=>events.push(active),
+      sleep:async ms=>waits.push(ms),
+    });
+    assert.equal((await output.speakReply({kind:'reply',text:'The lights are on.'})).success,true);
+    await output.outputTail;
+    assert.deepEqual(events,[true,false],mode);
+    assert.equal(waits.at(-1),750,mode);
+    assert.equal(waits.length,mode==='ha_only'||mode==='physical_only'?2:1,mode);
+    assert.equal(output.isRecentEcho('The lights are on!'),true,mode);
+    assert.equal(output.isRecentEcho('Please turn them off.'),false,mode);
+    assert.equal(output.isRecentEcho('The lights are on.',Date.now()+16_000),false,mode);
+  }
+});
+
+test('failed speech reopens the microphone after a short audio tail',async()=>{
+  const events=[];const waits=[];
+  const output=new VoiceOutput({
+    getConfig:()=>config({speech:{outputMode:'ha_only'}}),
+    ha:{callService:async()=>{throw Error('HA 401: denied');}},
+    onPlaybackChange:active=>events.push(active),
+    sleep:async ms=>waits.push(ms),
+  });
+  assert.equal((await output.speakReply({kind:'reply',text:'Trying now.'})).success,false);
+  await output.outputTail;
+  assert.deepEqual(events,[true,false]);
+  assert.deepEqual(waits,[750]);
+});
+
+test('recent speech echo guard stays live after a long accepted HA stream',async()=>{
+  const waits=[];
+  const output=new VoiceOutput({
+    getConfig:()=>config({speech:{outputMode:'ha_only'}}),
+    ha:{callService:async()=>{}},
+    onPlaybackChange:()=>{},
+    sleep:ms=>new Promise(resolve=>waits.push({ms,resolve})),
+  });
+  assert.equal((await output.speakReply({kind:'reply',text:'The kitchen lights are on.'})).success,true);
+  assert.equal(output.isRecentEcho('The kitchen lights are on.',Date.now()+16_000),false);
+  await new Promise(resolve=>setImmediate(resolve));waits[0].resolve();
+  await new Promise(resolve=>setImmediate(resolve));waits[1].resolve();
+  await output.outputTail;
+  assert.equal(output.isRecentEcho('The kitchen lights are on.'),true);
+});

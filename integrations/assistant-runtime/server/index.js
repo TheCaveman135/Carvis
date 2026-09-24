@@ -76,7 +76,11 @@ const physicalCarvis = new PhysicalCarvis({
 });
 const phoneSpeaker = new PhoneSpeaker();
 let hostMicrophone;
-const voiceOutput = new VoiceOutput({ getConfig: loadConfig, ha, physicalCarvis, phoneSpeaker,localSpeaker:(text,device)=>speakLocal(text,device,{onStart:()=>{if(hostMicrophone)hostMicrophone.speakingOutput=true;},onEnd:()=>{setTimeout(()=>{if(hostMicrophone)hostMicrophone.speakingOutput=false;},500);}}) });
+const voiceOutput = new VoiceOutput({
+  getConfig: loadConfig, ha, physicalCarvis, phoneSpeaker,
+  localSpeaker: (text, device) => speakLocal(text, device),
+  onPlaybackChange: active => hostMicrophone?.setSpeakingOutput(active),
+});
 const feed = new Feed(loadConfig, { onEntry: (entry) => {voiceReply(entry);process.send?.({type:"reply",entry});return enabled(loadConfig(),"speech") ? voiceOutput.speakReply(entry) : undefined;} });
 const glassesDisplay = new GlassesDisplay({
   onChange: (state) => broadcast({ type: 'glasses-display', glassesDisplay: state }),
@@ -393,7 +397,9 @@ async function serveStatic(req, res, urlPath) {
 hostMicrophone = new HostMicrophone({onAudio:async (pcm,{isCurrent})=>{
   const inputDevice = loadConfig().voice.inputDevice;
   const heard = await transcribeVoiceInput({ getConfig: loadConfig, transcriber: stt, pcm, inputDevice, isCurrent });
-  if (!heard.ignored && heard.text) await voice.ingest(heard.text, { source: 'server-microphone', confidence: heard.confidence });
+  if (!heard.ignored && heard.text && !voiceOutput.isRecentEcho(heard.text)) {
+    await voice.ingest(heard.text, { source: 'server-microphone', confidence: heard.confidence });
+  }
 }});
 const voiceControls=new VoiceControls({microphone:hostMicrophone,getConfig:rawConfig,saveConfig,listDevices:listHostAudio,transcriber:stt,voice});
 voiceControls.sync();
@@ -853,6 +859,14 @@ const routes = {
       ...CORS_HEADERS,
     });
     res.end(frame.bytes);
+  },
+
+  'GET /api/glasses/confirmation': async (req, res) => {
+    const owner = internalRequest(req)
+      ? req.headers['x-carvis-client'] === 'owner'
+      : Boolean(sessionUser(req, loadConfig()));
+    if (!owner) return sendJson(res, 401, { ok: false, message: 'unauthorised' });
+    sendJson(res, 200, { ok: true, confirmation: voice.confirmation || integrationBridge.confirmation() });
   },
 
   'POST /api/glasses/confirmation': async (req, res) => {

@@ -378,41 +378,25 @@ export function createSettingsView({ state, api, refreshState }) {
     preset.addEventListener("change", () => {
       const choice = personalityPresets.find(([id]) => id === preset.value);
       if (choice) personality.value = choice[2];
+      personality.dispatchEvent(new Event("input", { bubbles: true }));
     });
     personality.addEventListener("input", syncPreset);
     syncPreset();
     const profileFeedback = el("div");
+    const profileStatus = el(
+      "span",
+      { class: "small muted", role: "status", "aria-live": "polite" },
+      "Changes save automatically",
+    );
     const saveProfile = el(
       "button",
       { type: "submit", class: "button primary" },
-      "Save personality",
+      "Save now",
     );
     const profileForm = el(
       "form",
       {
         class: "settings-card",
-        onsubmit: async (event) => {
-          event.preventDefault();
-          saveProfile.disabled = true;
-          try {
-            await api("/api/settings", {
-              method: "POST",
-              body: {
-                profile: {
-                  displayName: display.value,
-                  assistantName: assistant.value,
-                  personality: personality.value,
-                },
-              },
-            });
-            await refreshState();
-            formNotice(profileFeedback, "Your preferences are saved.", true);
-          } catch (error) {
-            formNotice(profileFeedback, errorText(error));
-          } finally {
-            saveProfile.disabled = false;
-          }
-        },
       },
       el("h2", {}, "Make it personal"),
       el(
@@ -429,7 +413,7 @@ export function createSettingsView({ state, api, refreshState }) {
       field(
         "Personality preset",
         preset,
-        "Choose a starting point, then edit it below. Save personality to apply.",
+        "Choose a starting point, then edit it below. Changes save automatically.",
       ),
       field(
         "Personality & preferences",
@@ -437,8 +421,77 @@ export function createSettingsView({ state, api, refreshState }) {
         "For example: warm, concise, a little witty. Ask before making assumptions.",
       ),
       profileFeedback,
+      profileStatus,
       saveProfile,
     );
+    let profileBaseline = {
+      displayName: profile.displayName || "",
+      assistantName: profile.assistantName || "Carvis",
+      personality: profile.personality || "",
+    };
+    let profileTimer,
+      profileSaving = false,
+      profileQueued = false;
+    const profileValues = () => ({
+      displayName: display.value,
+      assistantName: assistant.value,
+      personality: personality.value,
+    });
+    const savePreferences = async (interactive = false) => {
+      clearTimeout(profileTimer);
+      if (profileSaving) {
+        profileQueued = true;
+        return;
+      }
+      if (!profileForm.checkValidity()) {
+        profileStatus.textContent = "Not saved — complete the highlighted fields";
+        if (interactive) profileForm.reportValidity();
+        return;
+      }
+      const snapshot = profileValues();
+      if (JSON.stringify(snapshot) === JSON.stringify(profileBaseline)) {
+        profileStatus.textContent = "All changes saved";
+        return;
+      }
+      profileSaving = true;
+      saveProfile.disabled = true;
+      profileStatus.textContent = "Saving…";
+      profileFeedback.replaceChildren();
+      let saved = false;
+      try {
+        await api("/api/settings", {
+          method: "POST",
+          body: { profile: snapshot },
+        });
+        profileBaseline = snapshot;
+        saved = true;
+        await refreshState();
+        profileStatus.textContent = "Saved";
+      } catch (error) {
+        profileStatus.textContent = "Not saved — retry";
+        formNotice(profileFeedback, errorText(error));
+      } finally {
+        profileSaving = false;
+        saveProfile.disabled = false;
+        const changedWhileSaving =
+          profileQueued ||
+          JSON.stringify(profileValues()) !== JSON.stringify(profileBaseline);
+        profileQueued = false;
+        if (saved && changedWhileSaving)
+          void savePreferences();
+      }
+    };
+    const schedulePreferences = () => {
+      clearTimeout(profileTimer);
+      profileStatus.textContent = "Unsaved changes…";
+      profileTimer = setTimeout(() => void savePreferences(), 700);
+    };
+    profileForm.addEventListener("input", schedulePreferences);
+    profileForm.addEventListener("change", schedulePreferences);
+    profileForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      void savePreferences(true);
+    });
     const router = renderModelRouter();
     const globalKeys = renderGlobalKeys(() => {
       modelForm.refreshModels();

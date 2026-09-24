@@ -51,7 +51,7 @@ export function createStateView(config) {
           : value;
   return (state) => ({
     entity_id: state.entity_id,
-    state: state.state,
+    state: scrub(state.state),
     attributes: scrub(
       Object.fromEntries(
         Object.entries(state.attributes || {}).filter(([key]) =>

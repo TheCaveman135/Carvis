@@ -18,6 +18,17 @@ test('HA migration preserves permissions and credentials as core settings',t=>{
  const reloaded=new Store(dir);assert(!Object.keys(reloaded.config.integrations).includes('home-assistant'));initializeHome(reloaded);
  assert.deepEqual(reloaded.config.integrations['home-assistant'].config.guards,original.guards);
 });
+test('legacy Home Assistant connection without selected entities still needs onboarding',t=>{
+ const dir=directory(t),store=new Store(dir);
+ store.config.integrations['home-assistant']={enabled:true,config:{baseUrl:'https://ha.example',token:'fixture-token',observed:[],controlled:[]}};
+ initializeHome(store);
+ assert.equal(store.config.homeAssistant.enabled,true);
+ assert.equal(store.config.homeAssistant.entitiesReviewed,false);
+ assert.equal(homeReady(store),false);
+ const reloaded=new Store(dir);
+ initializeHome(reloaded);
+ assert.equal(homeReady(reloaded),false);
+});
 test('fresh home setup must connect, name the home, and select devices; core HA stays outside catalog',async t=>{
  const dir=directory(t),store=new Store(dir);store.config.auth=createAccount('owner','fixture-long-password');store.saveConfig();
  const app=await createApp({dataDirectory:dir,fetcher:async url=>new Response(JSON.stringify(String(url).endsWith('/api/')?{message:'API running'}:[]),{headers:{'content-type':'application/json'}})});

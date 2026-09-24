@@ -37,6 +37,32 @@ test('Unselected cameras and arbitrary URLs cannot cause reads or model calls',a
   assert.equal(h.reads.length,0);assert.equal(h.calls.length,0);
 });
 
+test('Revoking a camera during retrieval or analysis stops the observation from being returned',async t=>{
+  const duringRead=fixture(t);
+  duringRead.ha.cameraImage=async id=>{
+    duringRead.reads.push(id);
+    duringRead.cfg.entities.observed=[];
+    return {bytes:frame};
+  };
+  const unread=await duringRead.vision.inspect({question:'What is visible?',camera_ids:['camera.bedroom']});
+  assert.equal(unread.success,false);
+  assert.equal(unread.observations[0].status,'unavailable');
+  assert.match(unread.observations[0].error,/no longer selected/);
+  assert.equal(duringRead.calls.length,0);
+
+  const duringModel=fixture(t),modelFetch=duringModel.vision.fetch;
+  duringModel.vision.fetch=async(...args)=>{
+    const response=await modelFetch(...args);
+    duringModel.cfg.entities.observed=[];
+    return response;
+  };
+  const revoked=await duringModel.vision.inspect({question:'What is visible?',camera_ids:['camera.bedroom']});
+  assert.equal(duringModel.calls.length,1);
+  assert.equal(revoked.success,false);
+  assert.equal(revoked.observations[0].status,'unavailable');
+  assert.equal(revoked.observations[0].answer,undefined);
+});
+
 test('Unavailable camera is explicitly reported without erasing a good sighting',async t=>{
   const h=fixture(t);h.ha.states.set('camera.lab',{state:'unavailable'});
   const r=await h.vision.inspect({question:'Find cat'});

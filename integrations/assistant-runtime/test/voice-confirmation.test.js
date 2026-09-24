@@ -310,6 +310,31 @@ test('a Standard utterance only needs the shared 60% floor, not Critical\'s 80%'
   assert.equal(invocations.length, 1);
 });
 
+test('the installed microphone obeys the same wake-word and confidence gates as glasses', async () => {
+  const h = testVoice();
+  h.config.voice.requireWakeWord = true;
+  const source = 'server-microphone';
+
+  assert.equal((await h.voice.ingest('turn on the lights', { source, confidence: 0.99 })).reason, 'no wake word');
+  assert.equal((await h.voice.ingest('Carvis, turn on the lights', { source, confidence: 0.5 })).outcome, 'ignored');
+  assert.equal(h.invocations.length, 0);
+
+  const accepted = await h.voice.ingest('Carvis, turn on the lights', { source, confidence: 0.99 });
+  assert.equal(accepted.outcome, 'acted');
+  assert.equal(h.invocations[0].trigger.wake_word, true);
+});
+
+test('the installed microphone stages Critical requests before model action', async () => {
+  const h = testVoice();
+  const source = 'server-microphone';
+
+  assert.equal((await h.voice.ingest('unlock the front door', { source, confidence: 0.7 })).outcome, 'ignored');
+  const staged = await h.voice.ingest('unlock the front door', { source, confidence: 0.9 });
+  assert.equal(staged.outcome, 'confirmation');
+  assert.equal(staged.confirmation.detail, 'Accept or decline in Carvis');
+  assert.equal(h.invocations.length, 0);
+});
+
 test('Web UI text is an explicit user_text request', async () => {
   const { voice, invocations } = testVoice();
 
@@ -518,7 +543,7 @@ test('clearTranscript clears the persisted copy, not just the in-memory ring', (
   assert.equal(deletedTranscriptCalls.length, 1);
 });
 
-test("answering Carvis's own clarifying question is not silently dropped by triage", async () => {
+for (const source of ['glasses', 'server-microphone']) test(`answering Carvis's own clarifying question works from ${source}`, async () => {
   const { voice, carvis } = testVoice();
   let triageCalls = 0;
   voice.complete = async () => {
@@ -532,20 +557,20 @@ test("answering Carvis's own clarifying question is not silently dropped by tria
   let replyIndex = 0;
   carvis.invoke = async () => ({ outcome: 'done', reply: replies[replyIndex++], calls: [], ms: 1, costUsd: 0 });
 
-  const asked = await voice.ingest('carvis put a camera on my HUD', { source: 'glasses' });
+  const asked = await voice.ingest('carvis put a camera on my HUD', { source });
   assert.equal(asked.outcome, 'acted');
   assert.equal(triageCalls, 0, 'the wake word already skips triage');
 
   // Three words specifically exercises the cheap coherence gate. This was
   // the real regression: the clarification bypass lived after that gate, so
   // it was unreachable for a perfectly good short answer.
-  const answered = await voice.ingest('the workbench light', { source: 'glasses' });
+  const answered = await voice.ingest('the workbench light', { source });
   assert.equal(answered.outcome, 'acted', "the reply to Carvis's own question must not be dropped as \"not for Carvis\"");
   assert.equal(triageCalls, 0, 'the clarification window should bypass triage, not just override its verdict');
 
   // One-shot: an unrelated utterance right after gets no free pass, and the
   // non-question second reply already cleared the window.
-  const unrelated = await voice.ingest('what a nice day', { source: 'glasses' });
+  const unrelated = await voice.ingest('what a nice day', { source });
   assert.equal(unrelated.outcome, 'ignored');
   assert.equal(triageCalls, 1);
 });

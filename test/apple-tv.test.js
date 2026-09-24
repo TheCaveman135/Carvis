@@ -205,6 +205,54 @@ test("TV navigation uses AI controller only and reports silent success without v
     0,
   );
 });
+test("TV navigation checks the remote that will receive the command, including its guard", async () => {
+  const f = fixture();
+  const button = await f.tool("tv_button");
+  f.ha.controlled = ["remote.tv"];
+  f.ha.guards["remote.tv"] = "protected";
+  assert.match(await button.confirmation({ button: "left" }), /TV button: left/);
+  assert.equal(
+    (await button.execute({ button: "left" })).requiresConfirmation,
+    true,
+  );
+  assert.equal(f.requests.filter((r) => r.path.endsWith("/api/command")).length, 0);
+  f.setNext({ id: "command-2", status: "completed" });
+  assert.equal(
+    (await button.execute({ button: "left" }, { confirmed: true })).success,
+    true,
+  );
+  f.ha.controlled = ["media_player.tv"];
+  delete f.ha.guards["remote.tv"];
+  await assert.rejects(
+    () => button.execute({ button: "left" }),
+    /Select this TV for control/,
+  );
+  assert.equal(f.requests.filter((r) => r.path.endsWith("/api/command")).length, 1);
+});
+test("Visual TV tasks require every configured control target and honor the strongest guard", async () => {
+  const f = fixture();
+  f.ha.controlled = ["media_player.tv"];
+  delete f.ha.guards["remote.tv"];
+  await assert.rejects(
+    () => (f.tool("tv_start")).then((tool) => tool.execute({ goal: "Open a movie" })),
+    /Select this TV for control/,
+  );
+  await assert.rejects(() => integration.test(f.ctx), /Select this TV for control/);
+  assert.equal(f.requests.filter((r) => r.path.endsWith("/api/start")).length, 0);
+
+  f.ha.controlled.push("remote.tv");
+  f.ha.guards["remote.tv"] = "protected";
+  for (const [name, args] of [
+    ["tv_start", { goal: "Open a movie" }],
+    ["tv_context", { id: "task-1", context: "Try Netflix" }],
+    ["tv_cancel", { id: "task-1" }],
+  ]) {
+    const tool = await f.tool(name);
+    assert.match(await tool.confirmation(args), /TV task/);
+    assert.equal((await tool.execute(args)).requiresConfirmation, true);
+  }
+  assert.equal(f.requests.filter((r) => r.path.includes("/api/hassio_ingress/")).length, 0);
+});
 test("TV volume converts human percent to HA level before controller transport", async () => {
   const f = fixture();
   f.setNext({ id: "command-1", status: "completed" });

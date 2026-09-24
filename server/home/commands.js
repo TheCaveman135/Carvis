@@ -3,6 +3,7 @@ import { haRequest } from "./client.js";
 import { readState, visibleState } from "./state.js";
 import { liveOwner, needsLiveOwner, needsConfirmation } from "./permissions.js";
 import { WHITE_TEMPERATURE_DESCRIPTION, whiteTemperatureDetails } from "./light-color.js";
+import { setTimeout as wait } from "node:timers/promises";
 
 const SERVICES = Object.freeze({
   light: ["turn_on", "turn_off", "toggle"],
@@ -244,10 +245,29 @@ export async function command(ctx, args, options = {}) {
     };
   const domain = args.entity_id.split(".")[0];
   await haRequest(ctx, `/api/services/${domain}/${args.service}`, data);
+  const expectedState = {
+    turn_on: "on",
+    turn_off: "off",
+    lock: "locked",
+    unlock: "unlocked",
+    open_cover: "open",
+    close_cover: "closed",
+  }[args.service];
+  const expected = domain === "light" && data.brightness_pct === 0
+    ? "off" : expectedState;
   let fresh;
   try {
     fresh = await readState(ctx, args.entity_id);
-  } catch {
+    // Light state can lag a successful HA service response. Retry only a
+    // stale power state, for at most 600 ms; never resend the action itself.
+    if (domain === "light" && expected && fresh.state !== expected)
+      for (const delay of [200, 400]) {
+        await wait(delay, undefined, { signal: ctx.signal });
+        fresh = await readState(ctx, args.entity_id);
+        if (fresh.state === expected) break;
+      }
+  } catch (error) {
+    if (ctx.signal?.aborted) throw error;
     return {
       success: true,
       accepted: true,
@@ -257,14 +277,6 @@ export async function command(ctx, args, options = {}) {
         "Home Assistant accepted the command, but its resulting state could not be read. Check state before retrying.",
     };
   }
-  const expected = {
-    turn_on: "on",
-    turn_off: "off",
-    lock: "locked",
-    unlock: "unlocked",
-    open_cover: "open",
-    close_cover: "closed",
-  }[args.service];
   return {
     success: true,
     accepted: true,

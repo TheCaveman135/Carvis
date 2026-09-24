@@ -4,14 +4,17 @@ import { planTtsCall } from './automation-utils.js';
 import { log } from './log.js';
 
 export class VoiceOutput {
-  constructor({ getConfig, ha, physicalCarvis, phoneSpeaker, localSpeaker, sleep = pause }) {
+  constructor({ getConfig, ha, physicalCarvis, phoneSpeaker, localSpeaker, onPlaybackChange, sleep = pause }) {
     this.getConfig = getConfig;
     this.ha = ha;
     this.physicalCarvis = physicalCarvis;
     this.phoneSpeaker = phoneSpeaker;
     this.localSpeaker = localSpeaker;
+    this.onPlaybackChange = onPlaybackChange;
     this.sleep = sleep;
     this.recent = new Map();
+    this.recentSpoken = [];
+    this.echoesIgnored = 0;
     this.pendingReplies = new Set();
     this.queued = 0;
     this.lastDelivery = null;
@@ -37,16 +40,25 @@ export class VoiceOutput {
     if (!body || (automatic && (this.pendingReplies.has(body) || this.#duplicate(body)))) return { skipped: true };
     if (automatic) this.pendingReplies.add(body);
     this.queued++;
+    let playbackStarted = false;
+    let spokenRecord = null;
 
     const run = () => {
       // A line can wait behind another speaker request. Honor settings as
       // they stand when playback starts, including replies being switched off.
       if (!this.#available(automatic)) return { skipped: true };
+      playbackStarted = true;
+      this.#reportPlayback(true);
       return this.#deliver(body, source, automatic);
     };
     const result = this.outputTail.then(run, run)
       .then((spoken) => {
         if (automatic && spoken?.success) this.recent.set(body, Date.now());
+        if (spoken?.success) {
+          spokenRecord = { words: spokenWords(body), at: Date.now() };
+          this.recentSpoken.push(spokenRecord);
+          this.recentSpoken = this.recentSpoken.slice(-10);
+        }
         this.lastDelivery = {
           at: Date.now(), status: spoken?.skipped ? 'skipped' : spoken?.success ? 'accepted' : 'failed',
           target: spoken?.target || null, chunks: spoken?.chunks || 0,
@@ -61,16 +73,50 @@ export class VoiceOutput {
         // so leave enough time for the spoken line to finish before issuing
         // the next one. The returned result remains prompt; only the next
         // queued line waits.
-        if (spoken?.success && spoken.target && spoken.target !== 'physical_core' && !spoken.streamFinished) {
+        if (spoken?.success && spoken.target && !spoken.streamFinished &&
+            (spoken.target !== 'physical_core' || this.onPlaybackChange)) {
           await this.sleep(this.#estimatedPlaybackMs(spoken.lastChunk || body));
         }
+        // The microphone still receives the room for a moment after a TTS
+        // service returns. Keep its detector closed through that audio tail.
+        if (playbackStarted && this.onPlaybackChange) await this.sleep(750);
       })
-      .catch(() => {});
+      .catch(async () => {
+        if (playbackStarted && this.onPlaybackChange) {
+          try { await this.sleep(750); } catch { /* still reopen the microphone */ }
+        }
+      })
+      .finally(() => {
+        if (spokenRecord) {
+          // HA may accept a stream well before its speaker finishes. Start the
+          // late-transcript window again when playback actually clears.
+          spokenRecord.at = Date.now();
+          if (!this.recentSpoken.includes(spokenRecord)) this.recentSpoken.push(spokenRecord);
+          this.recentSpoken = this.recentSpoken.slice(-10);
+        }
+        if (playbackStarted) this.#reportPlayback(false);
+      });
     return result;
   }
 
+  #reportPlayback(active) {
+    try { this.onPlaybackChange?.(active); } catch { /* microphone status must not break speech */ }
+  }
+
   state() {
-    return { queued: this.queued, lastDelivery: this.lastDelivery };
+    return { queued: this.queued, lastDelivery: this.lastDelivery, echoesIgnored: this.echoesIgnored };
+  }
+
+  /** A last-chance guard for audio that was already in flight as TTS began. */
+  isRecentEcho(text, now = Date.now()) {
+    const heard = spokenWords(text);
+    if (!heard.length) return false;
+    this.recentSpoken = this.recentSpoken.filter(item => now - item.at < 15_000);
+    const echo = this.recentSpoken.some(item =>
+      (heard.length === item.words.length && heard.every((word, index) => word === item.words[index])) ||
+      (heard.length >= 3 && containsWords(item.words, heard)));
+    if (echo) this.echoesIgnored++;
+    return echo;
   }
 
   #available(automatic) {
@@ -221,4 +267,15 @@ function pause(ms) {
     // the only thing that keeps a clean shutdown alive.
     timer.unref?.();
   });
+}
+
+function spokenWords(text) {
+  return String(text || '').toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+}
+
+function containsWords(haystack, needle) {
+  for (let start = 0; start <= haystack.length - needle.length; start++) {
+    if (needle.every((word, index) => word === haystack[start + index])) return true;
+  }
+  return false;
 }
