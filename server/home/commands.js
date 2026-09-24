@@ -259,9 +259,9 @@ export async function command(ctx, args, options = {}) {
   try {
     fresh = await readState(ctx, args.entity_id);
     // Light state can lag a successful HA service response. Retry only a
-    // stale power state, for at most 600 ms; never resend the action itself.
+    // stale power state, for at most 1.2 seconds; never resend the action itself.
     if (domain === "light" && expected && fresh.state !== expected)
-      for (const delay of [200, 400]) {
+      for (const delay of [200, 400, 600]) {
         await wait(delay, undefined, { signal: ctx.signal });
         fresh = await readState(ctx, args.entity_id);
         if (fresh.state === expected) break;
