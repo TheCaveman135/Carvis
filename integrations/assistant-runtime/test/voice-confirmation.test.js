@@ -23,6 +23,8 @@ function testVoice({ ignoreAssistantSpeech = () => false } = {}) {
       confirmWithoutWakeWord: true,
       confirmationTimeoutSec: 120,
       implicitIntents: false,
+      // Keep unrelated voice tests independent of the time of day.
+      quietHoursConfirm: false,
     },
   };
   const gatewayCalls = [];
